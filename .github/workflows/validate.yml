@@ -1,0 +1,25 @@
+name: validate
+on: [push, pull_request]
+jobs:
+  notebooks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install nbformat pyflakes langsat
+      - name: every notebook is valid nbformat and has no error outputs
+        run: |
+          python - <<'PY'
+          import glob, nbformat, sys
+          bad = 0
+          for f in sorted(glob.glob("examples/**/*.ipynb", recursive=True)):
+              nb = nbformat.read(f, as_version=4); nbformat.validate(nb)
+              errs = [o for c in nb.cells if c.cell_type == "code" for o in c.get("outputs", []) if o.get("output_type") == "error"]
+              print(f"{f}: {len(nb.cells)} cells, {len(errs)} error outputs")
+              bad += len(errs)
+          sys.exit(1 if bad else 0)
+          PY
+      - run: python -m pyflakes examples/amazon_reviews/_common.py scripts/build_results_table.py
+      - name: no secrets in the tree
+        run: '! grep -rEn "rdl_[0-9a-f]{16}|whsec_[0-9a-f]{16}|pypi-AgE|npm_[A-Za-z0-9]{20}" --include=*.ipynb --include=*.py --include=*.md . || (echo "secret-like token found" && exit 1)'

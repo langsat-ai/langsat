@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-09-15T09:20:03+00:00",
+  "notebook": "07_forecast_review_volume",
+  "task": "forecast \u00b7 monthly review count + mean rating (zero-shot)",
+  "model": "Chronos-2 (zero-shot)",
+  "project_id": "0b6ffd93-08da-4220-9dfa-5b62b5f5951f",
+  "credits_charged_this_run": 152,
+  "headline": {
+    "horizon_months": 6,
+    "calibrated": true,
+    "next_month_reviews_median": 0.0,
+    "next_month_mean_rating_median": 4.09,
+    "note": "zero-shot: no held-out metric by design"
+  }
+}

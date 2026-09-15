@@ -1,0 +1,28 @@
+{
+  "generated_at": "2026-09-15T09:16:08+00:00",
+  "notebook": "01_setup_and_explore",
+  "task": "setup + explore (no model)",
+  "model": "\u2014",
+  "project_id": "0b6ffd93-08da-4220-9dfa-5b62b5f5951f",
+  "tables": {
+    "customer": 9821,
+    "product": 8607,
+    "review": 10000
+  },
+  "foreign_keys": {
+    "review": {
+      "product_id": "product",
+      "customer_id": "customer"
+    },
+    "product": {},
+    "customer": {}
+  },
+  "charts": [
+    "Reviews by rating",
+    "Most-reviewed brands (joined, top 10)"
+  ],
+  "headline": {
+    "published_link": true,
+    "answer_chars": 104
+  }
+}

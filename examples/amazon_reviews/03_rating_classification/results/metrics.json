@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-09-15T09:17:39+00:00",
+  "notebook": "03_rating_classification",
+  "task": "multiclass \u00b7 review.rating (5 classes)",
+  "model": "GAT",
+  "project_id": "c40a4efc-7d71-4534-85f1-f80135e71ab5",
+  "model_id": "cb1c7b94-613b-413a-9bf7-50342f63a953",
+  "training_duration_sec": 161,
+  "credits_charged_this_run": 100,
+  "headline": {
+    "accuracy": 0.665,
+    "f1_macro": 0.4655290194640462
+  },
+  "baseline": {
+    "accuracy": 0.6311,
+    "f1_macro_note": "always-5\u2605"
+  }
+}

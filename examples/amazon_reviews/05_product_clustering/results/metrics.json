@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-09-15T09:18:24+00:00",
+  "notebook": "05_product_clustering",
+  "task": "clustering \u00b7 product (unsupervised)",
+  "model": "unsupervised",
+  "project_id": "44eb67a5-aea9-427e-be04-5efeafe0b708",
+  "model_id": "fef7e68f-e85f-49ce-ac60-a59a8447d457",
+  "training_duration_sec": 61,
+  "credits_charged_this_run": 1000,
+  "headline": {
+    "val_loss": 0.7756605157456783,
+    "epochs": 100,
+    "clusters_in_sample": 2,
+    "note": "self-supervised: reconstruction loss, no labels"
+  }
+}

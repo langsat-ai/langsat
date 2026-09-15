@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-09-15T09:20:49+00:00",
+  "notebook": "08_predict_api_and_monitoring",
+  "task": "serve + monitor the binary model from 04",
+  "model": "Baseline",
+  "project_id": "28106708-9ec0-48e4-b292-d600b9bc2ed8",
+  "model_id": "61b6e350-ea4c-4219-a694-00835a452fd5",
+  "headline": {
+    "batch_scored": 3,
+    "monitoring_keys": [
+      "state",
+      "model_id",
+      "project_name",
+      "task_type",
+      "period_days",
+      "version",
+      "family",
+      "version_label"
+    ]
+  }
+}
