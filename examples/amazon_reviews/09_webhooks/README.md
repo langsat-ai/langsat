@@ -12,8 +12,20 @@ finishes (`job.succeeded`) and kicks off the next step.
 Set `WEBHOOK_URL` (and `WEBHOOK_SITE_TOKEN` — the uuid in the URL — to read what arrived) before running; without them
 the notebook explains and skips the live steps.
 
-Notebook: [`09_webhooks.ipynb`](09_webhooks.ipynb) · outputs are from a real run on —.
+Notebook: [`09_webhooks.ipynb`](09_webhooks.ipynb) · outputs are from a real run on 2026-09-15.
 
+## Result
+
+| | |
+|---|---|
+| task | webhooks · job.succeeded on clean |
+| model / lane | — |
+| ran_live | yes |
+| ping_ok | yes |
+| job_succeeded_seen | yes |
+| project | `0b6ffd93-08da-4220-9dfa-5b62b5f5951f` |
+
+Full numbers: [`results/metrics.json`](results/metrics.json).
 
 ## Run it
 

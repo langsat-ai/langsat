@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-09-15T10:30:14+00:00",
+  "notebook": "09_webhooks",
+  "task": "webhooks \u00b7 job.succeeded on clean",
+  "model": "\u2014",
+  "project_id": "0b6ffd93-08da-4220-9dfa-5b62b5f5951f",
+  "headline": {
+    "ran_live": true,
+    "ping_ok": true,
+    "job_succeeded_seen": true
+  }
+}
