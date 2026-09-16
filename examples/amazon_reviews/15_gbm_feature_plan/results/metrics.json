@@ -1,18 +1,19 @@
 {
-  "generated_at": "2026-09-16T06:23:28+00:00",
+  "generated_at": "2026-09-16T07:47:14+00:00",
   "notebook": "15_gbm_feature_plan",
-  "task": "regression \u00b7 LightGBM on a feature-engineering SQL plan (dev preview)",
+  "task": "regression \u00b7 LightGBM on a feature-engineering SQL plan",
   "model": "lightgbm",
-  "project_id": "1d4c9ae5-3087-4ef4-9015-8ed189a2b4c4",
-  "model_id": "c0ed3440-fdf1-4023-830d-9ca399a789e3",
-  "training_duration_sec": 137,
-  "credits_charged_this_run": 0,
+  "project_id": "0613fe4c-8ba8-4082-a131-e25a3164f2b4",
+  "model_id": "d01d4059-6e25-418f-82c3-dfe078f67106",
+  "training_duration_sec": 71,
+  "credits_charged_this_run": 1543,
   "headline": {
-    "mae": 0.6262036033940322,
-    "rmse": 0.8754422431618313,
-    "r2": 0.22581637653342213,
-    "n_features": 46,
-    "feature_plan_origin": "user",
-    "environment": "dev"
+    "mae": 0.5347809836047894,
+    "rmse": 0.7938671583943031,
+    "r2": 0.36337358548877585,
+    "n_features": 58,
+    "plan_columns": 51,
+    "feature_plan_origin": "llm",
+    "predicted_rating": 4.74
   }
 }
