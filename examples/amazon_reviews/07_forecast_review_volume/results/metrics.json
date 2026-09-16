@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-09-16T02:15:15+00:00",
+  "generated_at": "2026-09-16T03:05:15+00:00",
   "notebook": "07_forecast_review_volume",
   "task": "forecast \u00b7 monthly review count + mean rating (zero-shot)",
   "model": "Chronos-2 (zero-shot)",
-  "project_id": "0b6ffd93-08da-4220-9dfa-5b62b5f5951f",
+  "project_id": "5c40e337-9753-4618-a7b3-574419f93c1e",
   "credits_charged_this_run": 304,
   "headline": {
     "horizon_months": 6,

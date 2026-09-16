@@ -23,11 +23,13 @@ script needs (presets: *Predict only*, *Read only*, *Full SDK*). Docs: <https://
 ## The use cases
 
 Dataset: [`data/amazon_reviews_10k/`](data/amazon_reviews_10k/README.md) — `customer`, `product`, `review`
-(review → customer, review → product, time column `review_time`).
+(review → customer, review → product, time column `review_time`). The same three tables also live in a public
+[Google Sheet](https://docs.google.com/spreadsheets/d/1mLVFDGYHdDfNOOEvE5mpYiDgYH7nxkveZ3L00CoaBD8/edit?usp=sharing), one tab each — chapter 00 links it.
 
 <!-- results:start -->
 | notebook | task | model / lane | result (test split) | baseline | training time | credits charged |
 |---|---|---|---|---|---|---|
+| [00_connect_your_data](examples/amazon_reviews/00_connect_your_data/00_connect_your_data.ipynb) | connect data · upload, Google Sheet, connector | — | uploaded_rows customer 9,821, product 8,607, review 10,000, sheet_tabs customer, product, review, refresh succeeded | — | — | — |
 | [01_setup_and_explore](examples/amazon_reviews/01_setup_and_explore/01_setup_and_explore.ipynb) | setup + explore (no model) | — | published_link yes, chat_chart yes, answer_chars 489 | — | — | — |
 | [02_rating_regression](examples/amazon_reviews/02_rating_regression/02_rating_regression.ipynb) | regression · review.rating | GraphSAGE (default, labelled *Baseline*) | mae 0.476, rmse 0.662, r2 0.482, spearman 0.536 | mae 0.770, rmse 0.980, r2 0.000 | 2 min 32 s | 150 |
 | [03_rating_classification](examples/amazon_reviews/03_rating_classification/03_rating_classification.ipynb) | multiclass · review.rating (5 classes) | GATv2 | accuracy 0.665, f1_macro 0.466, recall_1star 0.375 | accuracy 0.631, f1_macro_note always-5★ | 2 min 41 s | 100 |
@@ -35,11 +37,11 @@ Dataset: [`data/amazon_reviews_10k/`](data/amazon_reviews_10k/README.md) — `cu
 | [05_product_clustering](examples/amazon_reviews/05_product_clustering/05_product_clustering.ipynb) | clustering · product (unsupervised) | GraphMAE (self-supervised) | val_loss 0.776, silhouette 0.4934, davies_bouldin 0.8753, clusters 2, note quality numbers come from the Model tab cards | — | 1 min 1 s | 2,000 |
 | [06_review_anomaly](examples/amazon_reviews/06_review_anomaly/06_review_anomaly.ipynb) | anomaly detection · review (unsupervised) | GraphMAE (self-supervised) | val_loss 0.621, threshold 0.435, flagged_in_sample 2, sample_size 30 | — | 1 min 6 s | 1,500 |
 | [07_forecast_review_volume](examples/amazon_reviews/07_forecast_review_volume/07_forecast_review_volume.ipynb) | forecast · monthly review count + mean rating (zero-shot) | Chronos-2 (zero-shot) | horizon_months 6, calibrated yes, next_month_reviews_median 0.000, next_month_mean_rating_median 4.090, note zero-shot: no held-out metric by design | — | — | 304 |
-| [08_predict_api_and_monitoring](examples/amazon_reviews/08_predict_api_and_monitoring/08_predict_api_and_monitoring.ipynb) | serve + monitor the binary model from 04 | GraphSAGE (default, labelled *Baseline*) | inductive_probability 0.909, batch_scored 5, monitored_features 9, predictions_in_window 70 | — | — | — |
+| [08_predict_api_and_monitoring](examples/amazon_reviews/08_predict_api_and_monitoring/08_predict_api_and_monitoring.ipynb) | serve + monitor the binary model from 04 | GraphSAGE (default, labelled *Baseline*) | inductive_probability 0.909, batch_scored 5, monitored_features 9, predictions_in_window 96 | — | — | — |
 | [09_webhooks](examples/amazon_reviews/09_webhooks/09_webhooks.ipynb) | webhooks · job.succeeded on clean | — | ran_live yes, ping_ok yes, job_succeeded_seen yes | — | — | — |
 | [10_credits_estimates_and_errors](examples/amazon_reviews/10_credits_estimates_and_errors/10_credits_estimates_and_errors.ipynb) | credits, estimates, typed errors | — | plan team, scopes_on_key 20, projects_estimated 6, errors_demonstrated NotFound, Invalid, NeedsUserSession | — | — | — |
 | [11_finetune](examples/amazon_reviews/11_finetune/11_finetune.ipynb) | fine-tune · regression on +1,000 newer reviews | GraphSAGE (default, labelled *Baseline*) | parent_mae 0.495, child_mae 0.507, child_version v2 | parent_r2 0.444, child_r2 0.452 | 0 min 44 s | 0 |
-| [12_training_options](examples/amazon_reviews/12_training_options/12_training_options.ipynb) | regression · text on/off · max-mode bake-off | GraphSAGE (default, labelled *Baseline*) | mae_v1_Baseline 0.497, mae_v2_Baseline 0.730, mae_v3_Baseline 0.476, serving v3 | — | — | 1,000 |
+| [12_training_options](examples/amazon_reviews/12_training_options/12_training_options.ipynb) | regression · text on/off · max-mode bake-off | GraphSAGE (default, labelled *Baseline*) | mae_v1_Baseline 0.497, mae_v2_Baseline 0.730, mae_v3_Baseline 0.476, serving v3 | — | — | 0 |
 <!-- results:end -->
 
 Metrics are what the platform reports on its held-out test split for the trained model; baselines are
@@ -50,6 +52,7 @@ unused minutes, so a few-minute training costs a few hundred.
 
 | # | notebook | what you learn |
 |---|---|---|
+| 00 | [Connect your data](examples/amazon_reviews/00_connect_your_data/) | upload files (presign → PUT → confirm) · link a live Google Sheet (preview tabs, import, refresh, schedule) · a database connector — each on a fresh project |
 | 01 | [Set up and explore](examples/amazon_reviews/01_setup_and_explore/) | upload → schema detection → clean (free) → pandas → dashboard + public link → ask |
 | 02 | [Rating regression](examples/amazon_reviews/02_rating_regression/) | a task in one sentence → relational GNN + text embeddings → MAE / RMSE / R² → predict, rank, importance |
 | 03 | [Rating classification](examples/amazon_reviews/03_rating_classification/) | the same target as 5 classes → accuracy / macro-F1 → probabilities, confusion matrix |

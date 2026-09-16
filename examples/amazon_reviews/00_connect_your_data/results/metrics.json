@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-09-16T03:13:46+00:00",
+  "notebook": "00_connect_your_data",
+  "task": "connect data \u00b7 upload, Google Sheet, connector",
+  "model": "\u2014",
+  "headline": {
+    "uploaded_rows": {
+      "customer": 9821,
+      "product": 8607,
+      "review": 10000
+    },
+    "sheet_tabs": [
+      "customer",
+      "product",
+      "review"
+    ],
+    "refresh": "succeeded"
+  }
+}

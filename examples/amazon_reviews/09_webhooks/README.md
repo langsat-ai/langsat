@@ -25,7 +25,7 @@ Notebook: [`09_webhooks.ipynb`](09_webhooks.ipynb) · outputs are from a real ru
 | ran_live | yes |
 | ping_ok | yes |
 | job_succeeded_seen | yes |
-| project | `0b6ffd93-08da-4220-9dfa-5b62b5f5951f` |
+| project | `5c40e337-9753-4618-a7b3-574419f93c1e` |
 
 Full numbers: [`results/metrics.json`](results/metrics.json).
 

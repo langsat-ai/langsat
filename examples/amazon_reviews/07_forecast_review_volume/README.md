@@ -29,7 +29,7 @@ Notebook: [`07_forecast_review_volume.ipynb`](07_forecast_review_volume.ipynb) Â
 | next_month_mean_rating_median | 4.0900 |
 | note | zero-shot: no held-out metric by design |
 | credits charged (this run) | 304 |
-| project | `0b6ffd93-08da-4220-9dfa-5b62b5f5951f` |
+| project | `5c40e337-9753-4618-a7b3-574419f93c1e` |
 
 Full numbers: [`results/metrics.json`](results/metrics.json).
 

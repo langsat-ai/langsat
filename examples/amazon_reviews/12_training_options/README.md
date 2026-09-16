@@ -28,7 +28,7 @@ Notebook: [`12_training_options.ipynb`](12_training_options.ipynb) · outputs ar
 | mae_v2_Baseline | 0.7299 |
 | mae_v3_Baseline | 0.4760 |
 | serving | v3 |
-| credits charged (this run) | 1,000 |
+| credits charged (this run) | 0 |
 | project | `8847cd90-8444-4934-aad9-8faa372216bf` |
 | model | `927511dc-161d-4a92-ac2b-6e3b97a0c9fc` |
 

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-16T01:58:49+00:00",
+  "generated_at": "2026-09-16T03:06:04+00:00",
   "notebook": "08_predict_api_and_monitoring",
   "task": "serve + monitor the binary model from 04",
   "model": "Baseline",
@@ -9,6 +9,6 @@
     "inductive_probability": 0.9087,
     "batch_scored": 5,
     "monitored_features": 9,
-    "predictions_in_window": 70
+    "predictions_in_window": 96
   }
 }

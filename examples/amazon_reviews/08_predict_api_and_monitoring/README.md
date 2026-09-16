@@ -25,7 +25,7 @@ Notebook: [`08_predict_api_and_monitoring.ipynb`](08_predict_api_and_monitoring.
 | inductive_probability | 0.9087 |
 | batch_scored | 5 |
 | monitored_features | 9 |
-| predictions_in_window | 70 |
+| predictions_in_window | 96 |
 | project | `28106708-9ec0-48e4-b292-d600b9bc2ed8` |
 | model | `61b6e350-ea4c-4219-a694-00835a452fd5` |
 

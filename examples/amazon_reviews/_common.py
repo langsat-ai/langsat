@@ -30,12 +30,25 @@ def connect() -> Langsat:
     return ls
 
 
-def get_or_create_project(ls: Langsat, slug: str, *, kind: str = "data_analysis", files=None):
+def get_or_create_project(ls: Langsat, slug: str, *, kind: str = "data_analysis", files=None, fresh: bool = False):
     """`amazon-reviews-<slug>` with the three CSVs uploaded, the schema detected and (for an analysis
-    project) the data cleaned. Reuses an existing project at whatever step it reached. `files` overrides
-    the three repo CSVs (the fine-tune notebook uploads a smaller first slice)."""
+    project) the data cleaned — the same calls notebook 01 makes one by one:
+
+        p = ls.projects.create(name, kind=kind)
+        p.sources.upload(*csv_paths)          # presign → S3 → confirm; rows counted server-side
+        p.schema.detect().wait()              # primary keys, foreign keys, time column
+        p.cleaning.clean().wait()             # data_analysis only; a data_science run cleans itself
+
+    Reuses an existing project at whatever step it reached, printing what it skips, so a re-run
+    is free. `fresh=True` deletes an existing project first (notebook 01 uses it to show every
+    step for real). `files` overrides the three repo CSVs (the fine-tune notebook uploads a smaller
+    first slice)."""
     name = f"{PROJECT_PREFIX}-{slug}"
     p = next((x for x in ls.projects.list() if x.name == name), None)
+    if p is not None and fresh:
+        p.delete()
+        print(f"deleted the previous {name} — starting from nothing")
+        p = None
     if p is None:
         p = ls.projects.create(name, kind=kind)
         print(f"created project {p.id} ({name}, {kind})")
@@ -43,19 +56,28 @@ def get_or_create_project(ls: Langsat, slug: str, *, kind: str = "data_analysis"
         print(f"reusing project {p.id} ({name}, status={p.status})")
     p.refresh()
     if not p.data.get("file_names"):
-        p.sources.upload(*(files or [DATA_DIR / f"{t}.csv" for t in TABLES]))
+        paths = files or [DATA_DIR / f"{t}.csv" for t in TABLES]
+        print("uploading", [Path(x).name for x in paths], "…")
+        up = p.sources.upload(*paths)
+        for f in up.get("files") or []:
+            print(f"   {f.get('name')}: {f.get('rows'):,} rows × {f.get('cols')} columns → table '{f.get('table') or Path(f.get('name')).stem}'")
         p.refresh()
-        print("uploaded:", p.data.get("file_names"))
+    else:
+        print("files already uploaded:", p.data.get("file_names"), "— skipping the upload")
     if not p.data.get("detected_schema"):
-        print("detecting schema …")
+        print("detecting schema (primary keys, foreign keys, time column) …")
         p.schema.detect().wait(timeout=900)
         p.refresh()
+    else:
+        print("schema already detected — skipping")
     # `POST /clean` is the data_analysis step; a data_science project cleans inside its training
     # pipeline (upload → detect → task → train), so there is nothing to call here for it.
     if p.data.get("project_type") == "data_analysis" and not p.data.get("cleaning_decided"):
         print("cleaning (0 credits under 500K rows) …")
         p.cleaning.clean().wait(timeout=1800)
         p.refresh()
+    elif p.data.get("project_type") == "data_analysis":
+        print("already cleaned — skipping")
     print(f"project ready: status={p.status} · type={p.data.get('project_type')} · files={p.data.get('file_names')}")
     return p
 
@@ -66,8 +88,13 @@ def print_schema(p) -> dict:
     print("primary keys :", sd.get("primary_keys"))
     print("foreign keys :", sd.get("foreign_keys"))
     print("time columns :", sd.get("time_cols") or sd.get("time_columns"))
+    # `tables.list()` reports a head sample until the project is cleaned; the confirmed upload counts
+    # (`sources.list()` row_count) are the real numbers, so prefer them.
+    by_table = {Path(f.get("name") or "").stem: f for f in p.sources.list()}
     for t in p.tables.list():
-        print(f"  {t['name']}: {t['rows']} rows · {t['columns']} columns")
+        src = by_table.get(t["name"]) or {}
+        rows = src.get("row_count") or t["rows"]
+        print(f"  {t['name']}: {rows:,} rows · {t['columns']} columns")
     return sr
 
 

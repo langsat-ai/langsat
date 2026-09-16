@@ -1,4 +1,4 @@
-"""Generate the 12 Amazon-reviews notebooks (book style; charts as images). Regenerating WIPES outputs — run `scripts/run_all.sh` afterwards. `NB_ONLY=11,12` limits it."""
+"""Generate the 13 Amazon-reviews notebooks (book style; charts as images). Regenerating WIPES outputs — run `scripts/run_all.sh` afterwards. `NB_ONLY=11,12` limits it."""
 from pathlib import Path
 import nbformat as nbf
 
@@ -62,6 +62,110 @@ def next_steps(*lines):
 COST_TRAIN = ("one GPU training run (a few minutes on `g4dn.2xlarge`; the API reserves the estimate — about 8,700 credits on the Team plan — "
               "and refunds the unused minutes, so a 90-second run ends up costing a few hundred), plus 50 credits per on-demand prediction. "
               "A re-run that finds the finished model pays only for its predictions.")
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# 00 connect your data
+# ══════════════════════════════════════════════════════════════════════════════════════════
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1mLVFDGYHdDfNOOEvE5mpYiDgYH7nxkveZ3L00CoaBD8/edit"
+
+write("00_connect_your_data", "00_connect_your_data.ipynb", [
+    intro("00 · Connect your data — files, a Google Sheet, a database",
+          "Before anything else, the data has to get in. This chapter shows the three ways, with a fresh project for each, so every step runs for real: **upload** files, **link** a Google Sheet that stays live, and (as code you can copy) a **database connector**. The other chapters reuse projects; this one starts from nothing on purpose.",
+          ["Create a project and upload CSV files — presign → PUT → confirm; rows counted server-side, plan caps enforced",
+           "Let Langsat detect keys and relationships, then read the sources back (`sources.list()`)",
+           "Link a Google Sheet: preview its tabs, import them, re-pull with `refresh()`, put it on a schedule",
+           "Private sheets: share with the Langsat service account, nothing else changes",
+           "A Postgres / MySQL connector on the Team plan (`ls.connectors`) — the calls, without a live database",
+           "Delete a project when you are done"],
+          "nothing — uploads, links, schema detection and a refresh under 500K rows are free; the two projects are deleted at the end."),
+    md("""## Three ways in
+
+| way | call | when |
+|---|---|---|
+| **Upload** | `p.sources.upload(*paths)` — CSV, Parquet, one-sheet XLSX | a one-off export; the data changes when you re-upload |
+| **Link a Google Sheet** | `p.sources.preview_link(url)` → `p.sources.link(url, tabs=[…])` | a sheet people keep editing; `refresh()` re-pulls it, a schedule does it for you |
+| **Database connector** (Team) | `ls.connectors.create(…)` → `test` → `sync` | Postgres / MySQL tables synced into the project on a schedule |
+
+Whichever way the rows arrive, everything after is identical: schema detection, cleaning, dashboards, chat, training. A project has a **kind** — `data_analysis` (dashboards, chat, forecasts; cleaning is a step) or `data_science` (the same plus training; the training pipeline cleans)."""),
+    code(PREAMBLE + '\nSHEET_URL = "' + SHEET_URL + '"   # a public copy of the same three tables, one tab each'),
+    md("""## Way 1 · Upload files
+
+`sources.upload(*paths)` is three HTTP calls the SDK makes for you: a **presigned URL** per file, a **PUT** straight to S3 (the bytes never pass through the API), then a **confirm** on which the server counts rows and columns and names the table after the file. Row caps and plan limits are enforced at the confirm — an upload over the cap is refused before anything is stored. Under a team, a new project lands in the team's org automatically."""),
+    code('''from _common import DATA_DIR
+NAME = "amazon-reviews-connect-upload"
+for old in [x for x in ls.projects.list() if x.name == NAME]:
+    old.delete(); print("deleted the previous", NAME, "— starting from nothing")
+p = ls.projects.create(NAME, kind="data_analysis")
+print("created", p.id, "· kind", p.data.get("project_type"), "· status", p.status)
+
+up = p.sources.upload(DATA_DIR / "customer.csv", DATA_DIR / "product.csv", DATA_DIR / "review.csv")
+for f in up["files"]:
+    print(f"  {f['name']:<13} {f['rows']:>7,} rows × {f['cols']} columns  ({f['size_bytes'] / 1e6:.1f} MB) → table '{f['table'] or f['name'][:-4]}'")
+print("status:", p.refresh().status, "· files:", p.data["file_names"])'''),
+    md("""### Detect the schema
+
+Long actions return a **Job**; `wait()` polls and raises `JobFailed` / `JobTimeout`. Schema detection samples every table and finds primary keys, foreign keys and the time column — nothing is declared by you. Then `sources.list()` shows each source as the platform holds it: its id (what `refresh`, `schedule` and `delete` take), type, rows, and when it was last pulled."""),
+    code('''job = p.schema.detect()
+job.wait(timeout=900, on_progress=lambda j: print("  ", j.get("stage"), j.get("progress_pct"), "%"))
+sr = print_schema(p)
+pd.DataFrame(p.sources.list())[["file_id", "name", "source_type", "row_count", "column_count", "cleaning_status"]]'''),
+    md("""### Re-upload and a fourth file
+
+A second `upload()` of a file with the same name **replaces** that table (and invalidates what was built on it — the app asks before it does that; the API just does it). A file with a new name adds a table. `estimates()` tells you what the next paid step would cost — cleaning is free here."""),
+    code('''print("estimates:", {k: p.estimates()[k] for k in ("clean", "ask", "predict")})
+print("cleaning is a separate step on a data_analysis project — chapter 01 runs it: p.cleaning.clean().wait()")'''),
+    md("""## Way 2 · Link a Google Sheet
+
+A sheet that is *Anyone with the link → Viewer* links as it is. A **private** sheet: share it (Viewer) with the Langsat service account — `langsat-sheets@langsat-sheets.iam.gserviceaccount.com` — and link the same URL; the platform reads it through the Sheets API, live, no export cache. `preview_link` costs nothing and writes nothing: it lists the workbook's tabs with row and column counts so you can pick which become tables."""),
+    code('''NAME = "amazon-reviews-connect-sheet"
+for old in [x for x in ls.projects.list() if x.name == NAME]:
+    old.delete(); print("deleted the previous", NAME)
+p2 = ls.projects.create(NAME, kind="data_analysis")
+
+preview = p2.sources.preview_link(SHEET_URL)
+print("workbook", preview["doc_id"])
+pd.DataFrame(preview["tabs"])'''),
+    code('''linked = p2.sources.link(SHEET_URL, tabs=["customer", "product", "review"])
+print(json.dumps(linked, indent=1, default=str)[:600])
+p2.schema.detect().wait(timeout=900)
+p2.refresh()
+print("status:", p2.status, "· tables:", [(t["name"], t["rows"]) for t in p2.tables.list()])'''),
+    md("""### Keep it fresh
+
+`refresh()` re-pulls the sheet, re-cleans and re-renders every recipe chart on the project's dashboards — a no-op when the bytes have not changed (`force=True` to insist). It is priced by lane: 0 credits under 500K rows. `schedule()` makes the platform do it on its own (`15min` · `hourly` · `daily` · `weekly`; the plan decides which are allowed); `set_live` turns a source's live re-pull on and off."""),
+    code('''src = pd.DataFrame(p2.sources.list())
+display(src[["file_id", "name", "source_type", "sheet_name", "row_count", "is_live", "refresh_schedule", "last_refreshed_at"]])
+fid = src.iloc[0]["file_id"]
+job = p2.sources.refresh(fid)
+job.wait(timeout=1800)
+print("refresh:", job.status, "·", (job.raw or {}).get("message"))
+p2.sources.schedule(fid, "daily")
+print("schedule:", next(x for x in p2.sources.list() if x["file_id"] == fid)["refresh_schedule"], "· next run:", next(x for x in p2.sources.list() if x["file_id"] == fid)["next_refresh_at"])'''),
+    md("""## Way 3 · A database connector (Team plan)
+
+The connector syncs tables from Postgres or MySQL into the project — on demand or on a schedule — over TLS from fixed egress IPs you can allow-list. It needs a reachable database, so it is shown here as the calls, not run:
+
+```python
+ls.connectors.allowlist_ips()                              # the IPs to allow on your database's firewall
+c = ls.connectors.create(project_id=p.id, display_name="orders-db", db_type="postgres",
+                         host="db.example.com", port=5432, database_name="shop", schema_name="public",
+                         username="langsat_ro", password="…", ssl_enabled=True)
+ls.connectors.test(c["connection_id"])                     # connectivity + permissions, nothing copied
+ls.connectors.preview_table(c["connection_id"], "orders")  # 20 rows
+ls.connectors.sync_estimate(c["connection_id"])            # rows, bytes, credits before you commit
+ls.connectors.sync(c["connection_id"])                     # → the tables land in the project; schedule as with a sheet
+```
+
+Credentials are stored encrypted and never returned by the API."""),
+    md("## Clean up\n\nDeleting a project removes its storage, dashboards, models and shares. Both projects here were made only to show the steps; the chapters that follow use `amazon-reviews-explore` and friends."),
+    code('''for x in (p, p2):
+    x.delete(); print("deleted", x.name)
+save_metrics(".", {"notebook": "00_connect_your_data", "task": "connect data · upload, Google Sheet, connector", "model": "—",
+                   "headline": {"uploaded_rows": {f["name"][:-4]: f["rows"] for f in up["files"]},
+                                "sheet_tabs": [t["sheet_name"] for t in preview["tabs"]], "refresh": job.status}})'''),
+    next_steps("[01 · Set up and explore](../01_setup_and_explore/) — clean, chart, publish, ask",
+               "Docs: https://langsat.ai/resources/learn/getting-started/sdk"),
+])
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # 01
@@ -225,6 +329,7 @@ write("02_rating_regression", "02_rating_regression.ipynb", [
           lane="relational GNN — the default GraphSAGE architecture (Langsat labels it *Baseline*), text embeddings on `review_text`, `summary`, `product.title` / `description`"),
     code(PREAMBLE),
     code(SETUP_DS.format(slug="rating-regression")),
+    md("*Data.* The same three CSVs as chapter 01, uploaded the same way (`projects.create` → `sources.upload` → `schema.detect()`); a `data_science` project skips the clean step because the training pipeline cleans. `get_or_create_project` runs those calls and prints what it skips on a re-run — the step-by-step version with outputs is in [01](../01_setup_and_explore/)."),
     train_md("`task_type=\"supervised\"` + `subtask_type=\"regression\"` pins the flavour; leave both out and Langsat classifies the intent itself."),
     code('''model = train_or_reuse(p, "Predict the rating a review gives, from the review text, its summary and the product it is about",
                        task_type="supervised", subtask_type="regression", enable_text_embedding=True)
@@ -242,9 +347,10 @@ print(f"model (test split)    · MAE {metrics.get('mae'):.3f} · RMSE {metrics.g
     code('''cards = viz.model_cards(p)
 overview = viz.card_table(cards["Model Overview"])
 {k: overview[k] for k in list(overview)[:12]}'''),
-    md("The training run's epoch history is also on `GET /projects/{id}/status` — the numbers behind the curves, as a table."),
-    code('''hist = pd.DataFrame(p.pipeline_status().get("epoch_history") or [])
-hist[["epoch", "train_loss", "val_loss", "epoch_time_sec"]].tail(5)'''),
+    md("The numbers behind the curves card are on the card itself (each trace is a series of epochs) — `GET /projects/{id}/status` also carries `epoch_history` while a run is in flight and right after it."),
+    code('''curves = viz.model_cards(p)["Training & Validation Curves"]["plotly"]["data"]
+hist = pd.DataFrame({t["name"]: pd.Series(t["y"], index=t["x"]) for t in curves}).rename_axis("epoch")
+hist.tail(5)'''),
     md("## Rank, score, explain\n\n`predict.top` ranks every review by its stored predicted rating; `order=\"asc\"` gives the other end. `predict.predict` scores one entity on demand (50 credits). Joining the two ends back to the review table shows what the model thinks a bad and a good review look like."),
     code('''best = ls.predict.top(model["model_id"], n=50)
 worst = ls.predict.top(model["model_id"], n=50, order="asc")
@@ -288,6 +394,7 @@ write("03_rating_classification", "03_rating_classification.ipynb", [
           lane="relational GNN — GATv2 (`model_key=\"gatv2_full\"`), 5 classes, text embeddings"),
     code(PREAMBLE),
     code(SETUP_DS.format(slug="rating-classes")),
+    md("*Data.* The same three CSVs as chapter 01, uploaded the same way (`projects.create` → `sources.upload` → `schema.detect()`); a `data_science` project skips the clean step because the training pipeline cleans. `get_or_create_project` runs those calls and prints what it skips on a re-run — the step-by-step version with outputs is in [01](../01_setup_and_explore/)."),
     train_md("`model_key` picks the architecture; the default is GraphSAGE. GATv2 weighs neighbours (the product's other reviews, the customer's other reviews) with attention."),
     code('''model = train_or_reuse(p, "Classify each review into its star rating from 1 to 5 using the review text, the summary and the product",
                        task_type="supervised", subtask_type="multiclass_classification", enable_text_embedding=True, model_key="gatv2_full")
@@ -345,6 +452,7 @@ write("04_verified_purchase_binary", "04_verified_purchase_binary.ipynb", [
           lane="relational GNN — default GraphSAGE (*Baseline*), text embeddings"),
     code(PREAMBLE),
     code(SETUP_DS.format(slug="verified")),
+    md("*Data.* The same three CSVs as chapter 01, uploaded the same way (`projects.create` → `sources.upload` → `schema.detect()`); a `data_science` project skips the clean step because the training pipeline cleans. `get_or_create_project` runs those calls and prints what it skips on a re-run — the step-by-step version with outputs is in [01](../01_setup_and_explore/)."),
     train_md(),
     code('''model = train_or_reuse(p, "Predict whether a review is a verified purchase, from the review text, the summary, the rating and the product",
                        task_type="supervised", subtask_type="binary_classification", enable_text_embedding=True)
@@ -393,6 +501,7 @@ write("05_product_clustering", "05_product_clustering.ipynb", [
           lane="GraphMAE (self-supervised) + clustering on the node embeddings"),
     code(PREAMBLE),
     code(SETUP_DS.format(slug="product-clusters")),
+    md("*Data.* The same three CSVs as chapter 01, uploaded the same way (`projects.create` → `sources.upload` → `schema.detect()`); a `data_science` project skips the clean step because the training pipeline cleans. `get_or_create_project` runs those calls and prints what it skips on a re-run — the step-by-step version with outputs is in [01](../01_setup_and_explore/)."),
     train_md("For an unsupervised task the flavour is `subtask_type=\"clustering\"`."),
     code('''model = train_or_reuse(p, "Group products into natural segments based on their title, description, price and how they are reviewed",
                        task_type="unsupervised", subtask_type="clustering", enable_text_embedding=True)
@@ -438,6 +547,7 @@ write("06_review_anomaly", "06_review_anomaly.ipynb", [
           lane="GraphMAE (self-supervised), anomaly scoring on the node embeddings"),
     code(PREAMBLE),
     code(SETUP_DS.format(slug="review-anomalies")),
+    md("*Data.* The same three CSVs as chapter 01, uploaded the same way (`projects.create` → `sources.upload` → `schema.detect()`); a `data_science` project skips the clean step because the training pipeline cleans. `get_or_create_project` runs those calls and prints what it skips on a re-run — the step-by-step version with outputs is in [01](../01_setup_and_explore/)."),
     train_md(),
     code('''model = train_or_reuse(p, "Detect unusual or suspicious reviews based on their text, rating and the product and customer they belong to",
                        task_type="unsupervised", subtask_type="anomaly_detection", enable_text_embedding=True)
