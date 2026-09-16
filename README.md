@@ -42,6 +42,7 @@ Dataset: [`data/amazon_reviews_10k/`](data/amazon_reviews_10k/README.md) — `cu
 | [10_credits_estimates_and_errors](examples/amazon_reviews/10_credits_estimates_and_errors/10_credits_estimates_and_errors.ipynb) | credits, estimates, typed errors | — | plan team, scopes_on_key 20, projects_estimated 6, errors_demonstrated NotFound, Invalid, NeedsUserSession | — | — | — |
 | [11_finetune](examples/amazon_reviews/11_finetune/11_finetune.ipynb) | fine-tune · regression on +1,000 newer reviews | GraphSAGE (default, labelled *Baseline*) | parent_mae 0.495, child_mae 0.507, child_version v2 | parent_r2 0.444, child_r2 0.452 | 0 min 44 s | 0 |
 | [12_training_options](examples/amazon_reviews/12_training_options/12_training_options.ipynb) | regression · text on/off · max-mode bake-off | GraphSAGE (default, labelled *Baseline*) | mae_v1_Baseline 0.497, mae_v2_Baseline 0.730, mae_v3_Baseline 0.476, serving v3 | — | — | 0 |
+| [13_choose_your_model](examples/amazon_reviews/13_choose_your_model/13_choose_your_model.ipynb) | regression · tabular (FT-Transformer, TabNet) vs relational | FT-Transformer (tabular) | mae_tabular_ft_transformer 0.471, mae_tabular_tabnet 0.547, mae_relational_Baseline 0.476 | — | — | 50 |
 <!-- results:end -->
 
 Metrics are what the platform reports on its held-out test split for the trained model; baselines are
@@ -65,6 +66,7 @@ unused minutes, so a few-minute training costs a few hundred.
 | 10 | [Credits, estimates, errors](examples/amazon_reviews/10_credits_estimates_and_errors/) | what things cost before you run them; typed errors a script can branch on |
 | 11 | [Fine-tune on new data](examples/amazon_reviews/11_finetune/) | train on 9,000 reviews → 1,000 newer ones arrive → `upload_finetune` → delta → warm fine-tune → v1 vs v2 |
 | 12 | [Training options](examples/amazon_reviews/12_training_options/) | text embeddings on/off, the architecture bake-off (`max_mode`), `fan_out_workers`, `model_key` → pick and activate the best version |
+| 13 | [Choose your model](examples/amazon_reviews/13_choose_your_model/) | tabular vs relational: how the mode is decided, the model menu per mode from the API, FT-Transformer and TabNet on a flattened table vs the graph model, predicting without neighbours |
 
 Each folder has the notebook, a short README and `results/metrics.json` (what the run ended on).
 
@@ -86,7 +88,7 @@ jupyter lab examples/amazon_reviews/01_setup_and_explore/01_setup_and_explore.ip
 or all of them headlessly, in order: `scripts/run_all.sh`. The notebooks are generated from
 `scripts/build_notebooks.py` (edit there, regenerate, re-run — regenerating clears the outputs) and the per-notebook
 READMEs from `scripts/build_readmes.py`. Notebooks are idempotent — projects are
-found by name and reused, a finished model is not retrained. The training notebooks (02–06, 11, 12) each run
+found by name and reused, a finished model is not retrained. The training notebooks (02–06, 11, 12, 13) each run
 GPU jobs of a few minutes; the estimate is printed before each one and credits are reserved, then
 refunded for unused minutes. `07`–`10` do not train. `09` needs `WEBHOOK_URL` (a https://webhook.site URL) and
 `WEBHOOK_SITE_TOKEN` in the environment to run live.

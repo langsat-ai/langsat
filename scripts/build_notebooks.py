@@ -1,4 +1,4 @@
-"""Generate the 13 Amazon-reviews notebooks (book style; charts as images). Regenerating WIPES outputs — run `scripts/run_all.sh` afterwards. `NB_ONLY=11,12` limits it."""
+"""Generate the 14 Amazon-reviews notebooks (book style; charts as images). Regenerating WIPES outputs — run `scripts/run_all.sh` afterwards. `NB_ONLY=11,12` limits it."""
 from pathlib import Path
 import nbformat as nbf
 
@@ -1033,6 +1033,105 @@ print("example (not applied here): p.tasks.set_text_embed_columns({'review': ['r
 save_metrics(".", {"notebook": "12_training_options", "task": "regression · text on/off · max-mode bake-off", "model": best.get("model_type"),
                    "project_id": p.id, "model_id": best["model_id"], "credits_charged_this_run": charged,
                    "headline": {f"mae_{m.get('version_label')}_{m.get('model_type')}": round(m["metrics"]["mae"], 4) for m in versions} | {"serving": best.get("version_label")}})'''),
-    next_steps("[11 · Fine-tune](../11_finetune/) — keep the winner current as data arrives",
+    next_steps("[13 · Choose your model](../13_choose_your_model/) — the tabular menu (MLP, FT-Transformer, ResNet, TabNet) against the relational one",
+               "[11 · Fine-tune](../11_finetune/) — keep the winner current as data arrives",
                "[08 · Predict API](../08_predict_api_and_monitoring/) — `active:<project>` follows whatever you activate"),
 ])
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# 13 choose your model — tabular vs relational
+# ══════════════════════════════════════════════════════════════════════════════════════════
+write("13_choose_your_model", "13_choose_your_model.ipynb", [
+    intro("13 · Choose your model — tabular vs relational",
+          "The same question as chapter 02 — predict a review's rating — trained two ways. A **tabular** project holds one table and trains a tabular network (MLP, FT-Transformer, ResNet, TabNet); a **relational** project holds several tables joined by keys and trains a graph network (GraphSAGE, GAT, GIN) that also reads a review's neighbours: the product's other reviews, the customer's other reviews. This chapter shows how the mode is decided, what each menu offers, trains two tabular models on a flattened copy of the data, and compares them with the relational model from chapter 12.",
+          ["How Langsat picks the mode: one file → tabular, several files → relational",
+           "Read the model menu for each mode from the API (`/tiers/{plan}/models?mode=…`) — what your plan lets you pick",
+           "Build a single flattened table (review + product + customer columns) and create a tabular project",
+           "Train `ft_transformer`, then `tabnet`, with `model_key` — and read their Model tabs as images",
+           "Compare tabular vs relational on the same target: what the neighbours are worth",
+           "Predict from a tabular model without `related_entities` — the trade-off in one call"],
+          "two GPU training runs on the tabular project (a few minutes each; the estimate is reserved and unused minutes refunded) plus a few predictions at 50 credits.",
+          lane="tabular: FT-Transformer and TabNet · relational (from 12): GraphSAGE bake-off winner"),
+    code(PREAMBLE),
+    md("""## 1 · The mode is decided by the upload
+
+There is no switch: a project with **one** file is `tabular`, a project with **two or more** is `relational`. Both go through the same schema detection, cleaning, dashboards and chat — the mode only changes which model family `train()` can use and how a prediction is made (a relational model needs the row's neighbours, a tabular model needs only the row).
+
+The menu per mode and plan comes from the API. `can_select` says whether your plan may pick an architecture at all (the Free plan trains the default)."""),
+    code('''me = ls.me(); plan = me["tier"]
+menus = {mode: ls.request("GET", f"/tiers/{plan}/models", params={"mode": mode}) for mode in ("tabular", "relational")}
+for mode, m in menus.items():
+    print(f"{mode:<11} can_select={m['can_select']}  →", ", ".join(f"{x['key']} ({x['label']})" for x in m["models"]))'''),
+    md("""## 2 · One flat table
+
+A tabular model sees one row at a time, so anything from the other tables has to be **joined in as columns** beforehand — here the product's title, brand, category and price and the customer's name, next to the review. That is exactly what a relational model does *for you* (and more: it also aggregates the neighbours' other rows), which is the comparison this chapter is about."""),
+    code('''import tempfile, pathlib
+from _common import DATA_DIR
+review = pd.read_csv(DATA_DIR / "review.csv"); product = pd.read_csv(DATA_DIR / "product.csv"); customer = pd.read_csv(DATA_DIR / "customer.csv")
+flat = (review.merge(product, on="product_id", how="left").merge(customer, on="customer_id", how="left")
+              .drop(columns=["product_id", "customer_id"]))          # ids would only be high-cardinality categoricals here
+tmp = pathlib.Path(tempfile.mkdtemp()); flat.to_csv(tmp / "review_flat.csv", index=False)
+print(flat.shape, "·", list(flat.columns))
+flat.head(3)'''),
+    code('''p = get_or_create_project(ls, "tabular", kind="data_science", files=[tmp / "review_flat.csv"])
+print("mode:", p.refresh().data.get("mode"), "· tables:", [t["name"] for t in p.tables.list()])
+before = credits_used(ls)'''),
+    md("""## 3 · Train two tabular architectures
+
+`model_key` picks from the tabular menu. **FT-Transformer** tokenises every column (numbers and categories) and runs attention across features; **TabNet** learns which features to attend to per step, with sparse masks you can read as importance. Both handle the text columns through the same embedding step as the graph models (`enable_text_embedding`). The helper defines the task once; the second run is `p.train(model_key=…)` on the same task."""),
+    code('''v1 = next((m for m in project_models(p) if m.get("metrics") and m.get("model_type") == "ft_transformer"), None) or train_or_reuse(
+    p, "Predict the rating a review gives, from the review text, its summary, the product and the customer",
+    task_type="supervised", subtask_type="regression", enable_text_embedding=True, model_key="ft_transformer", retrain=bool(p.models.list()))
+print("v1:", v1["version_label"], v1["model_type"], "· MAE", round(v1["metrics"]["mae"], 4), "· R²", round(v1["metrics"].get("r2", 0), 4))'''),
+    code('''from _common import wait_for_training, known_models
+v2 = next((m for m in project_models(p) if m.get("metrics") and m.get("model_type") == "tabnet"), None)
+if v2 is None:
+    minutes = int(p.estimates()["train"]["suggested_minutes"]) + 2
+    known = known_models(p)
+    p.train(model_key="tabnet", enable_text_embedding=True, max_training_min=minutes)
+    v2 = wait_for_training(p, known_model_ids=known)
+print("v2:", v2["version_label"], v2["model_type"], "· MAE", round(v2["metrics"]["mae"], 4), "· R²", round(v2["metrics"].get("r2", 0), 4))
+best = min((v1, v2), key=lambda m: m["metrics"]["mae"])
+if not best.get("is_active"):
+    p.models.activate(best["model_id"])
+print("serving:", best["version_label"], best["model_type"])'''),
+    md(MODEL_TAB_MD.replace("## The Model tab, as images", "### The Model tab, as images (the version that serves)")),
+    code('''fig(viz.model_dashboard(p, cols=2))'''),
+    md("""## 4 · Tabular vs relational, same target
+
+The relational model comes from the `amazon-reviews-rating-regression` project (chapter 12's bake-off winner). Same 10,000 reviews, same target, same text embeddings; the difference is that the graph model also reads each review's neighbourhood — the product's other reviews and ratings, the customer's other reviews — while the flat table can only carry what was joined in as a column.
+
+Read the table honestly, and read more than one number: MAE rewards being close on the many 5★ rows, RMSE and R² punish the big misses. On this sample the neighbourhood is thin (at most four reviews per customer, most products reviewed once), so a flat table with the joins done by hand can match a graph model on MAE while the graph model is clearly ahead on RMSE / R² — the relationships pay off more when customers and products have histories. That is the point of running both: the flat table is the baseline a relational model has to beat on *your* data."""),
+    code('''rel = next(x for x in ls.projects.list() if x.name == "amazon-reviews-rating-regression")
+rel_model = rel.models.active()
+rows = [{"project": "tabular", "mode": "tabular", "model": m["model_type"], "version": m["version_label"], "seconds": m.get("training_duration_sec"),
+         **{k: round(m["metrics"].get(k), 4) for k in ("mae", "rmse", "r2", "spearman")}} for m in (v1, v2)]
+rows.append({"project": "rating-regression", "mode": "relational", "model": rel_model["model_type"], "version": rel_model["version_label"], "seconds": rel_model.get("training_duration_sec"),
+             **{k: round(rel_model["metrics"].get(k), 4) for k in ("mae", "rmse", "r2", "spearman")}})
+cmp = pd.DataFrame(rows).set_index(["mode", "model"]); display(cmp)
+import matplotlib.pyplot as plt
+f, ax = plt.subplots(figsize=(6, 2.8)); cmp["mae"].plot(kind="barh", ax=ax, color=["#c4a35a", "#c4a35a", "#c0392b"]); ax.invert_yaxis(); ax.set_xlabel("MAE on the test split (lower is better)")
+ax.set_title("Same target, three models", loc="left", fontweight="bold"); fig(f)'''),
+    md("""## 5 · Predicting from a tabular model
+
+A tabular model predicts from the row alone — no `related_entities`, which makes it the simpler one to serve from an application form. The relational model needs the ids of existing neighbours (chapter 08). Here: the same brand-new review, scored by the tabular model."""),
+    code('''active = p.models.active()
+schema = ls.predict.model(active["model_id"])
+print("data_mode:", schema["data_mode"], "· required:", schema["required_features"])
+row = {"review_text": "Arrived on time, exactly as described. The kids loved it and we read it twice the first night.",
+       "summary": "Great buy", "verified": 1, "title": "Charlotte's Web", "brand": "E. B. White",
+       "category": "Books|Children's Books", "description": "A classic story of friendship on a farm.", "price": 8.99, "customer_name": "Kindle Customer"}
+features = {k: row[k] for k in schema["required_features"]}          # exactly what the model asks for — an unknown key is refused
+out = ls.predict.predict(model_id=active["model_id"], mode="inductive", features=features)
+print("predicted rating:", round(out["result"]["prediction"], 2), "· model:", out["version_label"], active["model_type"], "· mode:", out["mode"])
+print("(a regression head is not clipped to the 1–5 scale — clip in your application if you show it as stars)")'''),
+    code('''charged = credits_used(ls) - before
+save_metrics(".", {"notebook": "13_choose_your_model", "task": "regression · tabular (FT-Transformer, TabNet) vs relational", "model": active.get("model_type"),
+                   "project_id": p.id, "model_id": active["model_id"], "credits_charged_this_run": charged,
+                   "headline": {f"mae_tabular_{m['model_type']}": round(m["metrics"]["mae"], 4) for m in (v1, v2)} | {f"mae_relational_{rel_model['model_type']}": round(rel_model["metrics"]["mae"], 4)},
+                   "menus": {k: [x["key"] for x in v["models"]] for k, v in menus.items()}})'''),
+    next_steps("[12 · Training options](../12_training_options/) — the relational menu, the bake-off, text embeddings",
+               "[08 · Predict API](../08_predict_api_and_monitoring/) — serving either kind of model",
+               "One table with everything joined in is the honest baseline for a graph model: if the relational run is not ahead of it, the relationships are not carrying signal on your data"),
+])
+

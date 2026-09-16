@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-09-16T04:09:34+00:00",
+  "notebook": "13_choose_your_model",
+  "task": "regression \u00b7 tabular (FT-Transformer, TabNet) vs relational",
+  "model": "ft_transformer",
+  "project_id": "8af313bf-c0a1-4514-bb97-0c47f1ec05c0",
+  "model_id": "93eb4467-ca17-4986-b441-7a619eb6db03",
+  "credits_charged_this_run": 50,
+  "headline": {
+    "mae_tabular_ft_transformer": 0.4706,
+    "mae_tabular_tabnet": 0.5474,
+    "mae_relational_Baseline": 0.476
+  },
+  "menus": {
+    "tabular": [
+      "mlp_small",
+      "mlp_baseline",
+      "mlp_large",
+      "ft_transformer",
+      "resnet",
+      "tabnet"
+    ],
+    "relational": [
+      "sage_baseline",
+      "sage_full",
+      "gatv2_full",
+      "gin"
+    ]
+  }
+}
