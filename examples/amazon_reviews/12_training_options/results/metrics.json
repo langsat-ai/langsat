@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-09-16T02:29:15+00:00",
+  "notebook": "12_training_options",
+  "task": "regression \u00b7 text on/off \u00b7 max-mode bake-off",
+  "model": "Baseline",
+  "project_id": "8847cd90-8444-4934-aad9-8faa372216bf",
+  "model_id": "927511dc-161d-4a92-ac2b-6e3b97a0c9fc",
+  "credits_charged_this_run": 1000,
+  "headline": {
+    "mae_v1_Baseline": 0.4967,
+    "mae_v2_Baseline": 0.7299,
+    "mae_v3_Baseline": 0.476,
+    "serving": "v3"
+  }
+}

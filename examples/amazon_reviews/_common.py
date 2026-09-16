@@ -30,9 +30,10 @@ def connect() -> Langsat:
     return ls
 
 
-def get_or_create_project(ls: Langsat, slug: str, *, kind: str = "data_analysis"):
-    """`amazon-reviews-<slug>` with the three CSVs uploaded, the schema detected and the data cleaned.
-    Reuses an existing project at whatever step it reached."""
+def get_or_create_project(ls: Langsat, slug: str, *, kind: str = "data_analysis", files=None):
+    """`amazon-reviews-<slug>` with the three CSVs uploaded, the schema detected and (for an analysis
+    project) the data cleaned. Reuses an existing project at whatever step it reached. `files` overrides
+    the three repo CSVs (the fine-tune notebook uploads a smaller first slice)."""
     name = f"{PROJECT_PREFIX}-{slug}"
     p = next((x for x in ls.projects.list() if x.name == name), None)
     if p is None:
@@ -42,7 +43,7 @@ def get_or_create_project(ls: Langsat, slug: str, *, kind: str = "data_analysis"
         print(f"reusing project {p.id} ({name}, status={p.status})")
     p.refresh()
     if not p.data.get("file_names"):
-        p.sources.upload(*(DATA_DIR / f"{t}.csv" for t in TABLES))
+        p.sources.upload(*(files or [DATA_DIR / f"{t}.csv" for t in TABLES]))
         p.refresh()
         print("uploaded:", p.data.get("file_names"))
     if not p.data.get("detected_schema"):
@@ -78,16 +79,28 @@ def _finished_model(p) -> dict | None:
     return done[0] if done else None
 
 
+DEAD = ("failed", "cancelled")
+
+
+def known_models(p) -> dict:
+    """`{model_id: status}` before a train() — what `wait_for_training` compares against."""
+    return {m["model_id"]: (m.get("status") or "").lower() for m in p.models.list()}
+
+
 def wait_for_training(p, *, known_model_ids=(), poll: float = 20.0, timeout: float = 5400.0) -> dict:
-    """Poll until the run that `train()` just started ends. The signal is the NEW model row
-    (`models.list()`): it appears as `training`, becomes `ready` with metrics, or `failed`. The
-    project's `status` is printed for progress but is not the decision — a second version keeps
-    the project `ready` while it trains."""
+    """Poll until the run that `train()` just started ends. The signal is the run's model row
+    (`models.list()`): a NEW row — or a failed/cancelled row REUSED for the retry (same id,
+    status back to `training`) — that becomes `ready` with metrics, or `failed`. Pass
+    `known_models(p)` taken before `train()`. The project's `status` is printed for progress
+    but is not the decision — a second version keeps the project `ready` while it trains."""
+    known = dict(known_model_ids) if isinstance(known_model_ids, dict) else {k: "" for k in known_model_ids}
     t0 = time.monotonic()
     last = None
     while True:
         st = p.pipeline_status()
-        new = [m for m in p.models.list() if m.get("model_id") not in known_model_ids]
+        rows = p.models.list()
+        new = [m for m in rows if m.get("model_id") not in known
+               or (known.get(m.get("model_id")) in DEAD and (m.get("status") or "").lower() not in DEAD)]
         row = new[0] if new else None
         line = f"{st.get('status')} · {st.get('progress_stage')} · {st.get('progress_pct')}% · model {(row or {}).get('status')}"
         if line != last:
@@ -133,7 +146,7 @@ def train_or_reuse(p, query: str, *, task_type: str | None = None, subtask_type:
     # time + a training floor); asking for less is refused, unused minutes are refunded.
     minutes = max(int(max_training_min or 0), int(est.get("suggested_minutes") or 0) + 2) or None
     print(f"training … (max {minutes} min; credits are reserved for that and refunded for unused minutes)")
-    known = tuple(x.get("model_id") for x in p.models.list())
+    known = known_models(p)
     try:
         p.train(max_training_min=minutes, enable_text_embedding=enable_text_embedding, model_key=model_key)
     except Exception as e:                        # the floor the API states wins over the estimate
@@ -168,9 +181,35 @@ def save_metrics(notebook_dir: str | Path, payload: dict) -> Path:
 
 
 def show(d: dict, keys: tuple[str, ...] | None = None, digits: int = 4) -> None:
+    """Print a metrics dict as an aligned list."""
     for k, v in d.items():
         if keys and k not in keys:
             continue
         if isinstance(v, float):
             v = round(v, digits)
         print(f"  {k:<22} {v}")
+
+
+def fig(f, *, dpi: int = 110) -> None:
+    """Display a matplotlib figure as a PNG (so GitHub renders it) and close it — works under any
+    matplotlib backend, including a headless `nbconvert --execute`."""
+    from IPython.display import Image, display
+    from langsat import viz
+    import matplotlib.pyplot as plt
+    display(Image(data=viz.png_bytes(f, dpi=dpi)))
+    plt.close(f)
+
+
+def metrics_table(*models: dict):
+    """A pandas table of the numeric metrics of several model rows, one column per version."""
+    import pandas as pd
+    from langsat.resources.models import Models
+    return pd.DataFrame(Models.compare(*models)).T
+
+
+def project_models(p) -> list:
+    """Model rows newest first, with a readable label."""
+    rows = sorted(p.models.list(), key=lambda m: str(m.get("created_at") or ""), reverse=True)
+    for m in rows:
+        m["label"] = f"{m.get('version_label')} · {m.get('model_type')}{' · active' if m.get('is_active') else ''}"
+    return rows

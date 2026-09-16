@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-15T09:16:08+00:00",
+  "generated_at": "2026-09-16T02:14:16+00:00",
   "notebook": "01_setup_and_explore",
   "task": "setup + explore (no model)",
   "model": "\u2014",
@@ -19,10 +19,18 @@
   },
   "charts": [
     "Reviews by rating",
-    "Most-reviewed brands (joined, top 10)"
+    "Most-reviewed brands (joined, top 10)",
+    "Mean rating by year",
+    "Number of reviews per rating (from chat)"
+  ],
+  "ai_tabs": [
+    "customer",
+    "product",
+    "review"
   ],
   "headline": {
     "published_link": true,
-    "answer_chars": 104
+    "chat_chart": true,
+    "answer_chars": 489
   }
 }

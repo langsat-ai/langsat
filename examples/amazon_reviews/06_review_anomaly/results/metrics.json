@@ -1,17 +1,16 @@
 {
-  "generated_at": "2026-09-15T09:19:09+00:00",
+  "generated_at": "2026-09-16T01:57:19+00:00",
   "notebook": "06_review_anomaly",
   "task": "anomaly detection \u00b7 review (unsupervised)",
   "model": "unsupervised",
   "project_id": "828e4626-323e-4bee-9de4-7c825f7835d3",
   "model_id": "1489addf-1a1b-46c5-874d-afcbd9297d66",
   "training_duration_sec": 66,
-  "credits_charged_this_run": 1000,
+  "credits_charged_this_run": 1500,
   "headline": {
     "val_loss": 0.621403640817397,
-    "epochs": 100,
-    "flagged_in_sample": 1,
-    "sample_size": 20,
-    "note": "self-supervised: reconstruction loss, no labels"
+    "threshold": 0.4352,
+    "flagged_in_sample": 2,
+    "sample_size": 30
   }
 }

@@ -1,17 +1,17 @@
 {
-  "generated_at": "2026-09-15T09:16:54+00:00",
+  "generated_at": "2026-09-16T02:30:33+00:00",
   "notebook": "02_rating_regression",
   "task": "regression \u00b7 review.rating",
   "model": "Baseline",
   "project_id": "8847cd90-8444-4934-aad9-8faa372216bf",
-  "model_id": "bac91893-e681-4f20-9e90-70478ccd1874",
-  "training_duration_sec": 85,
-  "credits_charged_this_run": 100,
+  "model_id": "927511dc-161d-4a92-ac2b-6e3b97a0c9fc",
+  "training_duration_sec": 152,
+  "credits_charged_this_run": 150,
   "headline": {
-    "mae": 0.49669894576072693,
-    "rmse": 0.6894199049945945,
-    "r2": 0.4379347562789917,
-    "spearman": 0.5316546527743942
+    "mae": 0.4759664833545685,
+    "rmse": 0.6621282119096944,
+    "r2": 0.4815542697906494,
+    "spearman": 0.5356011625364776
   },
   "baseline": {
     "mae": 0.7701,

@@ -1,15 +1,16 @@
 {
-  "generated_at": "2026-09-15T09:20:55+00:00",
+  "generated_at": "2026-09-16T01:59:09+00:00",
   "notebook": "10_credits_estimates_and_errors",
   "task": "credits, estimates, typed errors",
   "model": "\u2014",
   "headline": {
-    "tier": "team",
-    "scopes_on_key": 17,
+    "plan": "team",
+    "scopes_on_key": 20,
+    "projects_estimated": 6,
     "errors_demonstrated": [
       "NotFound",
-      "Invalid/LangsatError",
-      "Conflict/LangsatError"
+      "Invalid",
+      "NeedsUserSession"
     ]
   }
 }

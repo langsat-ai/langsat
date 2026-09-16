@@ -1,21 +1,21 @@
 # 07 · Forecast monthly review volume and rating (zero-shot, no training)
 
-**Use case:** community managers staff the moderation queue a few months ahead — how many reviews will arrive per
-month, and is the average rating drifting?
+**Use case.** Community managers staff the moderation queue a few months ahead — how many reviews will arrive per month, and is the average rating drifting? Nothing is trained: Chronos-2 forecasts the project's own series on the spot.
 
-**Model / lane:** Chronos-2 zero-shot over the project's own `review_time` series — nothing is trained; the cost is
-40 + 6 × horizon credits per call.
+**Model / lane:** Chronos-2 zero-shot over `review_time`
 
-**Sub-tasks**
-1. Reuse the explore project (01)
-2. A 6-month forecast of the review **count** with 10 / 50 / 90 % quantiles
-3. A 6-month forecast of the **mean rating**
-4. Plot history and the forecast band; read the response's calibration flag and warnings
+**What you will learn**
+1. Forecast the monthly review **count** with 10 / 50 / 90 % quantiles and draw the band after the history
+2. Forecast the **mean rating** the same way
+3. Split a forecast by a category (`category_col`) — verified vs unverified reviews
+4. Read the response's calibration flag and warnings, and what a forecast costs
 
-The sample runs 2008 → September 2018 and thins out in its last weeks; the forecast follows that tail — which is what a
-forecaster should do.
+**What this costs.** no training; each forecast call costs 40 + 6 × horizon credits (6 months → 76 credits); a category split costs that × `max_categories`.
 
-Notebook: [`07_forecast_review_volume.ipynb`](07_forecast_review_volume.ipynb) · outputs are from a real run on 2026-09-15.
+> Every cell below ran for real against `api.langsat.ai` — the outputs are what the API returned. Re-running is safe:
+> projects are found by name and reused, and a finished model is not retrained.
+
+Notebook: [`07_forecast_review_volume.ipynb`](07_forecast_review_volume.ipynb) · outputs are from a real run on 2026-09-16.
 
 ## Result
 
@@ -28,7 +28,7 @@ Notebook: [`07_forecast_review_volume.ipynb`](07_forecast_review_volume.ipynb) �
 | next_month_reviews_median | 0.0000 |
 | next_month_mean_rating_median | 4.0900 |
 | note | zero-shot: no held-out metric by design |
-| credits charged (this run) | 152 |
+| credits charged (this run) | 304 |
 | project | `0b6ffd93-08da-4220-9dfa-5b62b5f5951f` |
 
 Full numbers: [`results/metrics.json`](results/metrics.json).

@@ -18,7 +18,7 @@ START, END = "<!-- results:start -->", "<!-- results:end -->"
 
 # what the platform calls an architecture → what a reader recognises
 MODEL_LABELS = {"Baseline": "GraphSAGE (default, labelled *Baseline*)", "SAGE": "GraphSAGE (full)", "GAT": "GATv2",
-                "GIN": "GIN", "unsupervised": "GraphMAE (self-supervised)"}
+                "GIN": "GIN", "TabNet": "TabNet", "unsupervised": "GraphMAE (self-supervised)"}
 
 
 def fmt(v):

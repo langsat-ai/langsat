@@ -1,16 +1,20 @@
 # 08 · The prediction API and model monitoring
 
-**Use case:** the verified-purchase model (04) goes into an application: score a review the app just received
-(inductive — from features, not a stored row), score in batches, and watch the model's inputs and outputs drift.
+**Use case.** The verified-purchase model (04) goes into an application: score a review the app just received (inductive — from its columns and its neighbours), score in batches, and watch the model's inputs drift.
 
-**Sub-tasks**
-1. Read the model's feature schema (`predict.model`)
-2. Inductive prediction from raw features
-3. Batch prediction
-4. Monitoring summary, thresholds and alert configuration
-5. Recent prediction monitoring for the model
+**What you will learn**
+1. Read the model's feature schema — what a request must carry
+2. Inductive prediction: a row the platform has never stored, with `related_entities`
+3. Batch prediction, and the `active:<project>` selector
+4. Monitoring: feature health as a table and a chart, thresholds, alert configuration (email / webhook)
+5. Recent-prediction monitoring for the model
 
-Notebook: [`08_predict_api_and_monitoring.ipynb`](08_predict_api_and_monitoring.ipynb) · outputs are from a real run on 2026-09-15.
+**What this costs.** no training; 50 credits per prediction (batch items included).
+
+> Every cell below ran for real against `api.langsat.ai` — the outputs are what the API returned. Re-running is safe:
+> projects are found by name and reused, and a finished model is not retrained.
+
+Notebook: [`08_predict_api_and_monitoring.ipynb`](08_predict_api_and_monitoring.ipynb) · outputs are from a real run on 2026-09-16.
 
 ## Result
 
@@ -18,8 +22,10 @@ Notebook: [`08_predict_api_and_monitoring.ipynb`](08_predict_api_and_monitoring.
 |---|---|
 | task | serve + monitor the binary model from 04 |
 | model / lane | GraphSAGE (default, labelled *Baseline*) |
-| batch_scored | 3 |
-| monitoring_keys | ['state', 'model_id', 'project_name', 'task_type', 'period_days', 'version', 'family', 'version_label'] |
+| inductive_probability | 0.9087 |
+| batch_scored | 5 |
+| monitored_features | 9 |
+| predictions_in_window | 70 |
 | project | `28106708-9ec0-48e4-b292-d600b9bc2ed8` |
 | model | `61b6e350-ea4c-4219-a694-00835a452fd5` |
 

@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-09-16T02:32:48+00:00",
+  "notebook": "11_finetune",
+  "task": "fine-tune \u00b7 regression on +1,000 newer reviews",
+  "model": "Baseline",
+  "project_id": "da326da0-ae64-4c17-bbb0-d8b8b1919ad7",
+  "model_id": "23382ce4-8945-483b-96da-af900fbd39e4",
+  "parent_model_id": "acd6850c-179f-4fd2-8b68-945036458630",
+  "training_duration_sec": 44,
+  "credits_charged_this_run": 0,
+  "headline": {
+    "parent_mae": 0.4951,
+    "child_mae": 0.5069,
+    "child_version": "v2"
+  },
+  "baseline": {
+    "parent_r2": 0.4436,
+    "child_r2": 0.4523
+  }
+}

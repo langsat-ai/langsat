@@ -20,6 +20,36 @@ jobs:
               bad += len(errs)
           sys.exit(1 if bad else 0)
           PY
+      - name: the chart notebooks carry their charts as PNGs
+        run: |
+          python - <<'PY'
+          import glob, nbformat, sys
+          missing = []
+          for f in sorted(glob.glob("examples/**/*.ipynb", recursive=True)):
+              nb = nbformat.read(f, as_version=4)
+              n = sum(1 for c in nb.cells if c.cell_type == "code" for o in c.get("outputs", []) if "image/png" in (o.get("data") or {}))
+              print(f"{f}: {n} image outputs")
+              if n == 0 and not any(k in f for k in ("09_webhooks", "10_credits")):
+                  missing.append(f)
+          sys.exit(1 if missing else 0)
+          PY
       - run: python -m pyflakes examples/amazon_reviews/_common.py scripts/build_results_table.py
-      - name: no secrets in the tree
-        run: '! grep -rEn "rdl_[0-9a-f]{16}|whsec_[0-9a-f]{16}|pypi-AgE|npm_[A-Za-z0-9]{20}" --include=*.ipynb --include=*.py --include=*.md . || (echo "secret-like token found" && exit 1)'
+      - name: no secrets in the tree (sources, markdown and text outputs — not image bytes)
+        run: |
+          python - <<'PY'
+          import glob, json, re, sys
+          pat = re.compile(r"rdl_[0-9a-f]{16}|whsec_[0-9a-f]{16}|pypi-AgE|npm_[A-Za-z0-9]{20}|phc_[A-Za-z0-9]{20}")
+          hits = []
+          for f in glob.glob("**/*", recursive=True):
+              if f.endswith(".ipynb"):
+                  nb = json.load(open(f))
+                  for c in nb["cells"]:
+                      text = "".join(c.get("source", []))
+                      for o in c.get("outputs", []):
+                          text += "".join(o.get("text", [])) + "".join((o.get("data") or {}).get("text/plain", []))
+                      if pat.search(text): hits.append(f)
+              elif f.endswith((".py", ".md", ".sh", ".yml", ".txt", ".json")) and ".venv" not in f:
+                  if pat.search(open(f, errors="ignore").read()): hits.append(f)
+          print("\n".join(hits) or "clean")
+          sys.exit(1 if hits else 0)
+          PY
