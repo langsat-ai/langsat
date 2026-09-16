@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-09-16T06:23:28+00:00",
+  "notebook": "15_gbm_feature_plan",
+  "task": "regression \u00b7 LightGBM on a feature-engineering SQL plan (dev preview)",
+  "model": "lightgbm",
+  "project_id": "1d4c9ae5-3087-4ef4-9015-8ed189a2b4c4",
+  "model_id": "c0ed3440-fdf1-4023-830d-9ca399a789e3",
+  "training_duration_sec": 137,
+  "credits_charged_this_run": 0,
+  "headline": {
+    "mae": 0.6262036033940322,
+    "rmse": 0.8754422431618313,
+    "r2": 0.22581637653342213,
+    "n_features": 46,
+    "feature_plan_origin": "user",
+    "environment": "dev"
+  }
+}

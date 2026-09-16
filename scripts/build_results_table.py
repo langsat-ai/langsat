@@ -18,7 +18,7 @@ START, END = "<!-- results:start -->", "<!-- results:end -->"
 
 # what the platform calls an architecture → what a reader recognises
 MODEL_LABELS = {"Baseline": "GraphSAGE (default, labelled *Baseline*)", "SAGE": "GraphSAGE (full)", "GAT": "GATv2",
-                "GIN": "GIN", "TabNet": "TabNet", "tabnet": "TabNet", "ft_transformer": "FT-Transformer (tabular)", "resnet": "ResNet (tabular)", "mlp_small": "MLP (tabular)", "mlp_baseline": "MLP (tabular)", "mlp_large": "MLP (tabular)", "unsupervised": "GraphMAE (self-supervised)"}
+                "GIN": "GIN", "TabNet": "TabNet", "tabnet": "TabNet", "ft_transformer": "FT-Transformer (tabular)", "resnet": "ResNet (tabular)", "mlp_small": "MLP (tabular)", "mlp_baseline": "MLP (tabular)", "mlp_large": "MLP (tabular)", "unsupervised": "GraphMAE (self-supervised)", "lightgbm": "LightGBM (GBM lane, dev)"}
 
 
 def fmt(v):
