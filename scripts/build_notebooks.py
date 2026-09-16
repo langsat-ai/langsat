@@ -1,4 +1,4 @@
-"""Generate the 14 Amazon-reviews notebooks (book style; charts as images). Regenerating WIPES outputs — run `scripts/run_all.sh` afterwards. `NB_ONLY=11,12` limits it."""
+"""Generate the 15 Amazon-reviews notebooks (book style; charts as images). Regenerating WIPES outputs — run `scripts/run_all.sh` afterwards. `NB_ONLY=11,12` limits it."""
 from pathlib import Path
 import nbformat as nbf
 
@@ -1133,5 +1133,109 @@ save_metrics(".", {"notebook": "13_choose_your_model", "task": "regression · ta
     next_steps("[12 · Training options](../12_training_options/) — the relational menu, the bake-off, text embeddings",
                "[08 · Predict API](../08_predict_api_and_monitoring/) — serving either kind of model",
                "One table with everything joined in is the honest baseline for a graph model: if the relational run is not ahead of it, the relationships are not carrying signal on your data"),
+])
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# 14 the cleaning plan — review, measure, edit, apply
+# ══════════════════════════════════════════════════════════════════════════════════════════
+write("14_cleaning_plan", "14_cleaning_plan.ipynb", [
+    intro("14 · The cleaning plan — review it, measure it, change it, then clean",
+          "After schema detection Langsat writes a **cleaning plan**: one decision per column (keep / transform / drop, with the operations and the reason) that compiles to the SQL the clean step runs. Chapter 01 accepted it as generated. This chapter stops before the clean, reads the plan and its SQL, measures a candidate change on a sample, edits three columns by hand — a placeholder token to NULL, an HTML entity, a brand prefix stripped with a regex — saves the overlay and runs the clean. It also shows the one thing an API key cannot do, and why.",
+          ["Stop after `schema.detect()` — the plan is `pending_review`, nothing has run yet",
+           "Read the generated plan: per-column actions, ops and reasons, the compiled SQL, corrections and warnings",
+           "`plan(measured=True)`: what each decision does to null rates and distinct values on a sample",
+           "Find what the LLM missed by looking at the data yourself (`\\N`, `&amp;`, `Visit Amazon's … Page`)",
+           "`preview()` a candidate overlay, then `save()` it and `clean()` — the plan is yours, the SQL is compiled from it",
+           "Hand-written SQL (`raw_expr`) is refused for an API key by design — what the app's SQL editor is for",
+           "`reset()` back to the generated plan; the data-model workspace next door"],
+          "nothing — plan reads, previews and a clean under 500K rows are free."),
+    code(PREAMBLE),
+    md("""## 1 · Stop before the clean
+
+`get_or_create_project(..., clean=False)` runs upload and schema detection and stops. The project is `schema_done`; the tables are readable as a head sample only; the cleaning plan exists but has not been applied — the status the app shows as *Review cleaning*."""),
+    code('''p = get_or_create_project(ls, "cleaning-plan", kind="data_analysis", clean=False, fresh=True)
+print("status:", p.status, "· cleaning decided:", bool(p.data.get("cleaning_decided")))'''),
+    md("""## 2 · Read the plan Langsat wrote
+
+`cleaning.plan()` returns the plan (`{table: {columns: {col: {action, ops, reason, locked…}}}}`), any **corrections** the validator made to the LLM's proposal (a key column it refused to drop, an op that does not fit the type), **warnings**, and `compiled_sql` — the exact DuckDB SQL the clean will run, generated from the plan. Locked columns are keys the graph depends on: they can be transformed, not dropped."""),
+    code('''pl = p.cleaning.plan()
+print("status:", pl["status"], "· tables:", list(pl["plan"]["tables"]), "· corrections:", len(pl["corrections"]), "· warnings:", len(pl["warnings"]))
+rows = []
+for table, t in pl["plan"]["tables"].items():
+    for col, c in t["columns"].items():
+        rows.append({"table": table, "column": col, "type": c["source_type"], "action": c["action"], "locked": c["lock_reason"] or "",
+                     "ops": " → ".join(o["op"] + (f"({o['params']})" if o.get("params") else "") for o in c["ops"]),
+                     "reason": (c["ops"][0].get("reason") if c["ops"] else "")[:70]})
+pd.set_option("display.max_colwidth", 80)
+pd.DataFrame(rows)'''),
+    code('''print(pl["compiled_sql"])'''),
+    md("""## 3 · Measure it on a sample
+
+`plan(measured=True)` runs the plan on a sample and reports, per column, the null rate before and after, how many distinct values collapse, and anything suspicious (a cast that would null most of a column, a token list that catches real values)."""),
+    code('''measured = p.cleaning.plan(measured=True)
+prev = pd.DataFrame(measured["preview"])
+print("sample rows:", measured["preview_sample_rows"])
+cols = [c for c in ("table", "column", "null_rate_before", "null_rate_after", "distinct_before", "distinct_after", "note") if c in prev.columns]
+prev[cols] if len(prev) else prev'''),
+    md("""## 4 · Look at the data yourself
+
+The LLM saw a sample and column names; you know the source. Until the clean has run, the project's tables are not readable (`table()` is the *cleaned* data), so look at the file you uploaded. Three things in `product` the plan did not touch: the category column carries the export's `\\N` placeholder for "no category", categories are HTML-escaped (`Literature &amp; Fiction`), and the brand column is a page title (`Visit Amazon's Stephen King Page`) rather than a name."""),
+    code('''from _common import DATA_DIR
+product = pd.read_csv(DATA_DIR / "product.csv")               # the uploaded file, as it went in
+print("category placeholders:", (product["category"] == "\\\\N").sum(), "· HTML-escaped:", product["category"].str.contains("&amp;", na=False).sum())
+print("brand as a page title:", product["brand"].str.startswith("Visit Amazon's", na=False).sum(), "of", len(product))
+product[["brand", "category"]].sample(5, random_state=3)'''),
+    md("""## 5 · Change the plan — preview, then save
+
+An **overlay** names only the columns you want to decide; everything else stays as generated. Each column gets an `action` and a list of ops from the platform's toolkit — `trim`, `case`, `replace`, `strip_chars`, `null_if_in`, `regexp_replace`, `cast`, `parse_number`, `impute`, `clip`, `round`, `date_trunc`, `split_part`, `substring`, `json_extract` … The same ops the app's per-column editor offers; the SQL is compiled from them, so nothing you type here runs unvalidated.
+
+`preview()` measures the candidate without saving; `save()` stores it as the draft the next clean runs."""),
+    code('''overlay = {"product": {"columns": {
+    "category": {"action": "transform", "ops": [
+        {"op": "null_if_in", "params": {"values": ["\\\\N", "N/A", ""]}, "reason": "the export's placeholder for no category"},
+        {"op": "replace", "params": {"find": "&amp;", "replace": "&"}, "reason": "HTML-escaped ampersands"}]},
+    "brand": {"action": "transform", "ops": [
+        {"op": "regexp_replace", "params": {"pattern": "^Visit Amazon's (.*) Page$", "replacement": "\\\\1"}, "reason": "the author's name, not the page title"},
+        {"op": "trim", "params": {}}]},
+}}}
+candidate = p.cleaning.preview(overlay)
+cand = pd.DataFrame(candidate["preview"])
+cand[[c for c in cand.columns if c in ("table", "column", "null_rate_before", "null_rate_after", "distinct_before", "distinct_after", "note")]].query("column in ['category', 'brand']") if len(cand) else candidate["warnings"]'''),
+    code('''saved = p.cleaning.save(overlay)
+print("status:", saved["status"], "· corrections:", saved["corrections"] or "none")
+for col in ("category", "brand"):
+    c = saved["plan"]["tables"]["product"]["columns"][col]
+    print(f"  {col}: {c['action']} ← " + " → ".join(f"{o['op']} [{o.get('origin')}]" for o in c["ops"]))
+print()
+print("\\n".join(l for l in saved["compiled_sql"].splitlines() if "@col:brand" in l or "@col:category" in l))'''),
+    md("""## 6 · Run the clean, check the result
+
+`clean()` runs the saved plan — the same call chapter 01 made, now on a plan you reviewed. Then read the cleaned table back: the placeholders are NULL, the ampersands are real, the brand is a name."""),
+    code('''p.cleaning.clean().wait(timeout=1800)
+product2 = p.table("product").to_pandas()
+print("status:", p.refresh().status)
+print("category NULLs:", product2["category"].isna().sum(), "(was 0; placeholders:", (product["category"] == "\\\\N").sum(), ") · '&amp;' left:", product2["category"].str.contains("&amp;", na=False).sum())
+print("brands still 'Visit Amazon's …':", product2["brand"].str.startswith("Visit Amazon's", na=False).sum())
+pd.DataFrame({"before": product["brand"].head(5).values, "after": product2["brand"].head(5).values})'''),
+    md("""## 7 · What an API key may not do — and why
+
+The plan above is **structured**: ops with parameters, compiled by the platform. The app's SQL editor also lets a signed-in person write a column expression or the whole table SQL by hand (`raw_expr`, `edited_sql`). That SQL runs on the machine that cleans and trains your data, so an API key — which can be a script, a CI job, a leaked file — is refused there, on purpose, until the box sandbox ships. The refusal is a typed error you can branch on."""),
+    code('''from langsat import errors
+try:
+    p.cleaning.save({"product": {"columns": {"price": {"action": "transform", "ops": [{"op": "raw_expr", "params": {"sql": "ROUND(price, 0)"}}]}}}})
+except errors.NeedsUserSession as e:
+    print("NeedsUserSession ·", e.status, e.code, "·", str(e.message)[:160])
+except errors.LangsatError as e:
+    print(type(e).__name__, "·", e.status, e.code, "·", str(e.message)[:160])'''),
+    md("""## 8 · Back to the generated plan; the workspace next door
+
+`reset()` discards the overlay and returns to Langsat's plan (the next clean runs that). The data-model workspace (`p.data_model`) is the other half of *Review*: edit primary / foreign keys and cell values as **pending** changes, then `refresh()` applies them together with the draft plan at the lane price — see the SDK reference."""),
+    code('''print("data model:", {k: v for k, v in p.data_model.get().items() if k in ("has_pending", "pending_summary", "status")} or list(p.data_model.get().keys())[:8])
+save_metrics(".", {"notebook": "14_cleaning_plan", "task": "cleaning plan · review, preview, edit, clean", "model": "—", "project_id": p.id,
+                   "headline": {"columns_in_plan": len(rows), "llm_transforms": sum(1 for r in rows if r["action"] == "transform"),
+                                "category_nulls_after": int(product2["category"].isna().sum()), "brand_titles_left": int(product2["brand"].str.startswith("Visit Amazon's", na=False).sum())}})'''),
+    next_steps("[01 · Set up and explore](../01_setup_and_explore/) — the clean accepted as generated",
+               "[00 · Connect your data](../00_connect_your_data/) — `refresh()` re-runs the saved plan on new data",
+               "SDK reference: `help(p.cleaning)`, `help(p.data_model)`"),
 ])
 

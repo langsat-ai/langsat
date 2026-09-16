@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-09-16T04:40:41+00:00",
+  "notebook": "14_cleaning_plan",
+  "task": "cleaning plan \u00b7 review, preview, edit, clean",
+  "model": "\u2014",
+  "project_id": "0d64a986-48a4-4bef-86aa-c5bfb5fb4fb6",
+  "headline": {
+    "columns_in_plan": 15,
+    "llm_transforms": 2,
+    "category_nulls_after": 348,
+    "brand_titles_left": 0
+  }
+}

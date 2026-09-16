@@ -29,7 +29,7 @@ jobs:
               nb = nbformat.read(f, as_version=4)
               n = sum(1 for c in nb.cells if c.cell_type == "code" for o in c.get("outputs", []) if "image/png" in (o.get("data") or {}))
               print(f"{f}: {n} image outputs")
-              if n == 0 and not any(k in f for k in ("00_connect", "09_webhooks", "10_credits")):
+              if n == 0 and not any(k in f for k in ("00_connect", "09_webhooks", "10_credits", "14_cleaning")):
                   missing.append(f)
           sys.exit(1 if missing else 0)
           PY

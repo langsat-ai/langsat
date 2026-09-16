@@ -30,7 +30,7 @@ def connect() -> Langsat:
     return ls
 
 
-def get_or_create_project(ls: Langsat, slug: str, *, kind: str = "data_analysis", files=None, fresh: bool = False):
+def get_or_create_project(ls: Langsat, slug: str, *, kind: str = "data_analysis", files=None, fresh: bool = False, clean: bool = True):
     """`amazon-reviews-<slug>` with the three CSVs uploaded, the schema detected and (for an analysis
     project) the data cleaned — the same calls notebook 01 makes one by one:
 
@@ -42,7 +42,7 @@ def get_or_create_project(ls: Langsat, slug: str, *, kind: str = "data_analysis"
     Reuses an existing project at whatever step it reached, printing what it skips, so a re-run
     is free. `fresh=True` deletes an existing project first (notebook 01 uses it to show every
     step for real). `files` overrides the three repo CSVs (the fine-tune notebook uploads a smaller
-    first slice)."""
+    first slice). `clean=False` stops after schema detection (chapter 14 reviews the plan first)."""
     name = f"{PROJECT_PREFIX}-{slug}"
     p = next((x for x in ls.projects.list() if x.name == name), None)
     if p is not None and fresh:
@@ -72,7 +72,9 @@ def get_or_create_project(ls: Langsat, slug: str, *, kind: str = "data_analysis"
         print("schema already detected — skipping")
     # `POST /clean` is the data_analysis step; a data_science project cleans inside its training
     # pipeline (upload → detect → task → train), so there is nothing to call here for it.
-    if p.data.get("project_type") == "data_analysis" and not p.data.get("cleaning_decided"):
+    if p.data.get("project_type") == "data_analysis" and not p.data.get("cleaning_decided") and not clean:
+        print("stopping before the clean (clean=False) — the cleaning plan is yours to review")
+    elif p.data.get("project_type") == "data_analysis" and not p.data.get("cleaning_decided"):
         print("cleaning (0 credits under 500K rows) …")
         p.cleaning.clean().wait(timeout=1800)
         p.refresh()
