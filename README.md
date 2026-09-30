@@ -45,6 +45,10 @@ Dataset: [`data/amazon_reviews_10k/`](data/amazon_reviews_10k/README.md) — `cu
 | [13_choose_your_model](examples/amazon_reviews/13_choose_your_model/13_choose_your_model.ipynb) | regression · tabular (FT-Transformer, TabNet) vs relational | FT-Transformer (tabular) | mae_tabular_ft_transformer 0.471, mae_tabular_tabnet 0.547, mae_relational_Baseline 0.476 | — | — | 50 |
 | [14_cleaning_plan](examples/amazon_reviews/14_cleaning_plan/14_cleaning_plan.ipynb) | cleaning plan · review, preview, edit, clean | — | columns_in_plan 15, llm_transforms 2, category_nulls_after 348, brand_titles_left 0 | — | — | — |
 | [15_gbm_feature_plan](examples/amazon_reviews/15_gbm_feature_plan/15_gbm_feature_plan.ipynb) | regression · LightGBM on a feature-engineering SQL plan | LightGBM (feature-plan table) | mae 0.535, rmse 0.794, r2 0.363, n_features 58, plan_columns 51, feature_plan_origin llm, predicted_rating 4.740 | — | 1 min 11 s | 1,543 |
+| [16_chart_grammar](examples/amazon_reviews/16_chart_grammar/16_chart_grammar.ipynb) | the recipe grammar · 24 chart types, preview → persist, refusals | — | chart_types 24, trace_types 10, columns 15, not_authorable 4, xy_scatter_enabled no, raw_date_groups 2,772, raw_date_drawn 50 | — | — | 0 |
+| [17_compare](examples/amazon_reviews/17_compare/17_compare.ipynb) | the bar family · 15 forms of one trace | — | charts_built 9, brands_in_data 426, price_buckets 7 | — | — | 0 |
+| [18_trend](examples/amazon_reviews/18_trend/18_trend.ipynb) | time on the axis · 4 shapes, 5 grains, the filter that freezes | — | charts_built 7, months 129, days_in_data 2,772, peak_month 2014-12, last_n_days_90_points 0 | — | — | 0 |
+| [19_composition](examples/amazon_reviews/19_composition/19_composition.ipynb) | compositions, grids, KPI and combo · the last 9 of the 24 types | — | charts_built 12, treemap_leaves —, types_available_here 23, xy_scatter_enabled no | — | — | 0 |
 <!-- results:end -->
 
 Metrics are what the platform reports on its held-out test split for the trained model; baselines are

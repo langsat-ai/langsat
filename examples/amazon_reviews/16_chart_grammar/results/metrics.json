@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-09-30T07:36:11+00:00",
+  "notebook": "16_chart_grammar",
+  "task": "the recipe grammar \u00b7 24 chart types, preview \u2192 persist, refusals",
+  "model": "\u2014",
+  "project_id": "5c40e337-9753-4618-a7b3-574419f93c1e",
+  "credits_charged_this_run": 0,
+  "headline": {
+    "chart_types": 24,
+    "trace_types": 10,
+    "columns": 15,
+    "not_authorable": 4,
+    "xy_scatter_enabled": false,
+    "raw_date_groups": 2772,
+    "raw_date_drawn": 50
+  }
+}
