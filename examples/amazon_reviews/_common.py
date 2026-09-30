@@ -242,3 +242,50 @@ def project_models(p) -> list:
     for m in rows:
         m["label"] = f"{m.get('version_label')} · {m.get('model_type')}{' · active' if m.get('is_active') else ''}"
     return rows
+
+
+# ── the analytics chapters (16–25) ─────────────────────────────────────────────────────────────
+
+def fresh_tab(p, name: str):
+    """A dashboard tab of this name with nothing on it — so a re-run of the chapter is the same
+    chapter, not the chapter plus yesterday's cards. Deleting and recreating is cheaper to read
+    than clearing widgets one by one, and both are free.
+
+    ⚠ A project holds 20 custom tabs on Pro/Max/Team (5 on Free), so the chapters reuse their own
+    tab by name rather than each minting a new one."""
+    for t in p.dashboards.list():
+        if t.name == name:
+            t.delete()
+    return p.dashboards.create(name)
+
+
+class spend:
+    """Measure what a block of code costs, and say so.
+
+        with spend(ls, "one ask()"):
+            p.ask("which brand is rated highest?")
+
+    The claim these chapters rest on — that building charts from code never calls the model — is
+    only worth making if it is measured, so the free chapters print a zero from the same ledger the
+    paid ones print their price from."""
+
+    def __init__(self, ls, label: str = ""):
+        self.ls, self.label, self.before, self.charged = ls, label, 0, 0
+
+    def __enter__(self):
+        self.before = credits_used(self.ls)
+        return self
+
+    def __exit__(self, *exc):
+        self.charged = credits_used(self.ls) - self.before
+        what = f"{self.label}: " if self.label else ""
+        print(f"→ {what}{self.charged:,} credits")
+        return False
+
+
+def show_recipe(recipe: dict, *, width: int = 96) -> None:
+    """A recipe printed the way you would read it — one line per key, JSON on the right."""
+    import json as _json
+    for k, v in recipe.items():
+        s = _json.dumps(v, default=str)
+        print(f"  {k:<14} {s if len(s) <= width else s[:width] + ' …'}")

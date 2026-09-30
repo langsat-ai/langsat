@@ -1351,3 +1351,766 @@ save_metrics(".", {"notebook": "15_gbm_feature_plan", "task": "regression · Lig
                "[13 · Choose your model](../13_choose_your_model/) — the neural menus this lane sits beside",
                "[08 · Predict API](../08_predict_api_and_monitoring/) — serving, monitoring, alerts"),
 ])
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# The analytics book — 16–25. Every way to make a chart, and the half of the product that
+# never calls the model. Chapters 00–15 above teach getting data in and training on it.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+# ⚠ ITS OWN PREAMBLE, AND THAT IS DELIBERATE. `PREAMBLE` is the first cell of all sixteen
+# notebooks above, with their outputs committed; adding an import to it would mean regenerating
+# them, and regenerating WIPES every committed output — including a GPU run that costs real money
+# to reproduce. So the analytics chapters carry their own.
+ANALYTICS_PREAMBLE = '''import sys, json
+sys.path.insert(0, "..")
+from _common import connect, get_or_create_project, credits_used, save_metrics, show, fig, fresh_tab, spend, show_recipe
+from langsat import charts, viz
+import pandas as pd
+
+ls = connect()'''
+
+ANALYTICS_SETUP = '''p = get_or_create_project(ls, "explore", kind="data_analysis")
+before = credits_used(ls)'''
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# 16 the grammar of a chart
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+write("16_chart_grammar", "16_chart_grammar.ipynb", [
+    intro("16 · The grammar of a chart — what a recipe is, and why `chart_type` is not a chart name",
+          "Everything from here to chapter 25 is the half of Langsat that never calls a model: you describe a chart, "
+          "the server compiles it to SQL and runs it on your data. It costs nothing, it re-aggregates itself every time "
+          "the data refreshes, and it is the same object the app's chart builder writes. This chapter is the grammar — "
+          "read it once and the nine chapters after it are vocabulary.",
+          ["Read the whole grammar from the server: 24 chart types, your columns, the joins, every bound",
+           "Why `chart_type` is a **Plotly trace type** and writing `\"line\"` draws a scatter while reporting success",
+           "Preview a recipe, then persist **the recipe the preview returned** — not the one you composed",
+           "The three things a recipe adds for you, so it bounds itself",
+           "Read a refusal: the reason comes back as a sentence, before anything is saved",
+           "Prove from the credit ledger that none of it charged"],
+          "nothing. Every call in this chapter is free — no model is in the path. The ledger is read at the start and "
+          "at the end and the difference is printed."),
+    code(ANALYTICS_PREAMBLE),
+    md("""## 1 · The project
+
+Chapters 16–25 all reuse `amazon-reviews-explore` — three tables, uploaded, schema-detected and cleaned by
+[chapter 01](../01_setup_and_explore/). Each chapter builds on its own dashboard tab, so they do not collide
+and a re-run is the same chapter rather than the chapter plus yesterday's cards."""),
+    code(ANALYTICS_SETUP),
+    code('''for t in p.tables.list():
+    print(f"{t['name']:<9} {t['rows']:>6,} rows × {t['columns']} columns")
+sd = p.schema.result()["schema_data"]
+print("\\nprimary keys :", sd.get("primary_keys"))
+print("foreign keys :", sd.get("foreign_keys"))
+print("time column  :", sd.get("time_cols") or sd.get("time_columns"))'''),
+    md("""## 2 · Ask the server what it will accept
+
+`builder_capabilities()` is the whole grammar, free, in one call: every chart type with the recipe fragment it
+needs and the wells it offers, your columns with the kind the engine sorted them into, the join edges, the saved
+measures, the aggregates, the date grains, the filter operators, the recipe keys the validator allows, and every
+bound. Read it before you guess — it is the difference between writing a chart and finding out what this project
+admits."""),
+    code('''tab = fresh_tab(p, "16 · Grammar")
+cap = tab.builder_capabilities()
+print("keys:", ", ".join(sorted(cap)))
+print("\\nchart types :", len(cap["chart_types"]))
+print("trace types :", sorted(cap["trace_types"]))
+print("columns     :", len(cap["columns"]), "·", {k: sum(1 for c in cap["columns"] if c["kind"] == k)
+                                                  for k in ("numeric", "text", "datetime", "boolean")})
+print("aggregates  :", cap["aggs"])
+print("grains      :", cap["grains"])
+print("not authorable:", cap["not_authorable"])'''),
+    md("""`joins` is not a list of edges — it is the schema the server resolved, and the rule it will
+hold you to. The SDK has no schema of its own, so a cross-table chart passes the edge explicitly, and this is
+where you read it from."""),
+    code('''print(json.dumps(cap["joins"], indent=1))
+
+FACT = "review"                                   # the table the measures live on
+def edge(dim):
+    """The fact→dimension join the server already knows about, in the shape a recipe wants."""
+    fk = next(c for c, t in cap["joins"]["foreign_keys"][FACT].items() if t == dim)
+    return {"table": dim, "left_column": fk, "right_column": cap["joins"]["primary_keys"][dim], "type": "left"}
+
+TO_PRODUCT = [edge("product")]
+TO_CUSTOMER = [edge("customer")]
+print("\\nreview → product :", TO_PRODUCT)
+print("review → customer:", TO_CUSTOMER)'''),
+    md("""The six booleans are **feature flags on this server**, and they are why a notebook reads the capabilities
+instead of assuming. On langsat.ai today `xy_scatter_enabled` is off, so 23 of the 24 chart types run there and
+`charts.scatter` comes back refused — with that reason, which is the point."""),
+    code('''print({k: v for k, v in cap.items() if k.endswith("_enabled")})
+print("\\nbounds:")
+for k, v in sorted(cap["limits"].items()):
+    print(f"  {k:<26} {v}")'''),
+    md("""## 3 · `chart_type` is a Plotly TRACE type
+
+This is the one fact worth stopping for. A recipe's `chart_type` is not the name of a chart — it is the name of a
+**Plotly trace**, and Plotly has no `line` trace and no `area` trace. A line is a `scatter` with `mode: "lines"`;
+an area is that plus `fill: "tozeroy"`; a clustered column is a `bar` with `barmode: "group"` in its layout.
+
+The engine validates by **blocklist**. So a hand-written `chart_type: "line"` is not refused — it passes, Plotly
+falls back to a default scatter, and the API reports success. You get a chart. It is the wrong chart.
+
+`langsat.charts` exists so you never have to know that: one function per chart type, each generated from the same
+declaration the app and the server read."""),
+    code('''print(f"{len(charts.BY_ID)} constructors\\n")
+for cid in ("column", "bar", "line", "area", "stacked_column_100", "donut", "dot", "combo"):
+    print(f"  charts.{cid:<20} → {json.dumps(charts.TRACES[cid], sort_keys=True)}")'''),
+    code('''# The same chart, written both ways.
+hand_written = {"tables": ["review"], "chart_type": "line",
+                "group_by": [{"column": "review_time", "transform": "to_year"}],
+                "measure": {"agg": "count"}}
+generated = charts.line(axis=charts.date("review.review_time", "year"),
+                        value=charts.count(), tables=["review"])
+print("hand-written chart_type:", hand_written["chart_type"])
+print("what a line actually is :", generated["chart_type"], "+ mode", repr(generated["mode"]))
+print("\\nis 'line' a trace the server accepts? ", "line" in cap["trace_types"])'''),
+    md("""## 4 · Preview, then persist what the preview returned
+
+`preview_chart()` renders a recipe without saving it — free, and it answers two questions at once: does this
+recipe work, and what does the server turn it into. It **normalises**: it mints bin labels, defaults the chart
+type, may pin a legend rollup. Persisting your own copy instead of the returned one is how a saved card ends up
+differing from the one you looked at."""),
+    code('''recipe = charts.column(axis="review.rating", value=charts.count(), tables=["review"])
+print("what you wrote:"); show_recipe(recipe)
+pv = tab.preview_chart(recipe)
+print(f"\\nok={pv['ok']} · n_groups={pv['n_groups']} · traces={[d['type'] for d in pv['spec']['data']]}")
+print("\\nwhat the server returned:"); show_recipe(pv["recipe"])'''),
+    code('''chart = tab.add_chart(pv["recipe"], title="Reviews by rating")
+print(chart.id, "·", chart.title)
+print("\\nthe numbers behind it:")
+print(dict(zip(pv["spec"]["data"][0]["x"], pv["spec"]["data"][0]["y"])))'''),
+    md("""## 5 · The three things a recipe adds for you
+
+A recipe should bound itself, so the SDK writes three rules the app writes too:
+
+1. **A categorical axis always carries `order_by.limit`.** Without it a group-by over 6,469 brands returns 6,469
+   rows to draw on an axis a few hundred pixels wide. A drill re-runs uncapped, so the cap costs nothing where it
+   matters.
+2. **A date axis always carries a grain.** A raw timestamp is one category per instant.
+3. **The aggregate sits on the fact table.** Across a join a dimension value repeats once per joined fact row, so
+   summing it multiplies.
+
+Rule 2 is the one that bites quietly. The SDK has no schema — it cannot tell a date column from a text one by its
+name — so you say so with `charts.date(column, grain)`."""),
+    code('''no_grain = charts.column(axis="review.review_time", value=charts.count(), tables=["review"])
+a = tab.preview_chart(no_grain)
+print(f"a raw date axis  → n_groups={a['n_groups']:,} and the chart draws {len(a['spec']['data'][0]['x'])} of them")
+print("                   order_by:", no_grain.get("order_by"))
+with_grain = charts.line(axis=charts.date("review.review_time", "year"), value=charts.count(), tables=["review"])
+b = tab.preview_chart(with_grain)
+print(f"charts.date(…, 'year') → n_groups={b['n_groups']} and the chart draws {len(b['spec']['data'][0]['x'])}")
+print("                   order_by:", with_grain.get("order_by"), "· grain:", with_grain["group_by"][0]["transform"])'''),
+    md("""## 6 · A refusal is a sentence
+
+Two kinds, and both arrive before anything is saved. The SDK refuses **locally**, with the app's own code, what it
+can decide without the server — a chart with no measure, a count given a column, bins that do not ascend. The
+server refuses what needs the schema, and says why."""),
+    code('''from langsat._charts_core import RecipeError
+
+def refuse(label, fn):
+    try:
+        fn(); print(f"  {label:<26} (not refused)")
+    except RecipeError as e: print(f"  {label:<26} {e}")
+    except TypeError as e:   print(f"  {label:<26} TypeError: {e}")
+
+print("refused locally, by the app's own rules:")
+refuse("a chart with no value",  lambda: charts.column(axis="review.rating", tables=["review"]))
+refuse("a grain that is not one", lambda: charts.date("review.review_time", "hour"))
+refuse("bins that descend",      lambda: charts.histogram(axis="product.price", edges=[50, 10, 0], tables=["product"]))
+refuse("a combo with a legend",  lambda: charts.combo(axis="review.rating", series="review.verified",
+                                                      value=charts.count(), value2=charts.avg("review.rating"), tables=["review"]))
+refuse("count given a column",   lambda: charts.count("review.rating"))'''),
+    md("""The last one is a `TypeError` rather than a refusal, and that is the design: `charts.count()` counts
+**rows** and takes no column at all, so the mistake is caught by the signature before any rule runs. The thing
+you meant is `charts.count_distinct(column)`.
+
+The server refuses what needs the schema — and says why, in a sentence, before anything is saved."""),
+    code('''from langsat.errors import Refused
+
+def server_refuse(label, recipe):
+    try:
+        pv = tab.preview_chart(recipe); print(f"  {label:<26} (not refused) n_groups={pv['n_groups']}")
+    except Refused as e:
+        print(f"  {label:<26} {str(e).replace('[200 refused] ', '')}")
+
+server_refuse("two tables, no join",
+              charts.column(axis="product.category", value=charts.count(), tables=["review", "product"]))
+server_refuse("aggregate on the dimension",
+              charts.bar(axis="product.category", value=charts.avg("product.price"),
+                         tables=["review", "product"], joins=TO_PRODUCT, top_n=12))
+server_refuse("a chart type this server has off",
+              charts.scatter(details="product.product_id", x=charts.avg("review.rating"),
+                             y=charts.count(), tables=["review", "product"], joins=TO_PRODUCT))'''),
+    md("""Three refusals, three different rules. The second is rule 3 enforced: `product.price` lives on the
+**dimension** table, so averaging it across the join would average it once per *review* rather than once per
+product — the engine calls that a fan-out and fails closed rather than returning a plausible number. The third is
+a feature flag, and the reason names it, which is how you tell "this server has it off" from "you wrote it wrong".
+
+The chart that *is* right puts the aggregate on the fact table and passes the edge."""),
+    code('''ok = charts.column(axis="product.category", value=charts.count(),
+                   tables=["review", "product"], joins=TO_PRODUCT, top_n=12)
+pv2 = tab.preview_chart(ok)
+tab.add_chart(pv2["recipe"], title="Reviews by category (top 12)")
+print(f"n_groups={pv2['n_groups']} · drawn={len(pv2['spec']['data'][0]['x'])}")
+fig(viz.draw_tab(tab, cols=2))'''),
+    md("""## 7 · What it cost
+
+Nothing. Not the capabilities call, not the previews, not the refusals, not the two saved cards. A recipe is
+compiled to SQL and run against your data with no model in the path — which is the claim the rest of this book
+rests on, so it is measured rather than asserted."""),
+    code('''charged = credits_used(ls) - before
+print(f"credits charged by this notebook: {charged}")
+save_metrics(".", {"notebook": "16_chart_grammar", "task": "the recipe grammar · 24 chart types, preview → persist, refusals",
+                   "model": "—", "project_id": p.id, "credits_charged_this_run": charged,
+                   "headline": {"chart_types": len(cap["chart_types"]), "trace_types": len(cap["trace_types"]),
+                                "columns": len(cap["columns"]), "not_authorable": len(cap["not_authorable"]),
+                                "xy_scatter_enabled": cap["xy_scatter_enabled"],
+                                "raw_date_groups": a["n_groups"], "raw_date_drawn": len(a["spec"]["data"][0]["x"])}})'''),
+    next_steps("[17 · Compare](../17_compare/) — the fifteen bar and column forms, and when each one is the honest choice",
+               "[18 · Trend](../18_trend/) — time on the axis, the five grains, and the filter that freezes",
+               "`help(langsat.charts)` — the constructors, each with the fragment it emits"),
+])
+
+
+# The join edges every chapter after 16 needs, derived from the capabilities rather than typed.
+ANALYTICS_STAR = '''cap = tab.builder_capabilities()
+FACT = "review"
+def edge(dim):
+    fk = next(c for c, t in cap["joins"]["foreign_keys"][FACT].items() if t == dim)
+    return {"table": dim, "left_column": fk, "right_column": cap["joins"]["primary_keys"][dim], "type": "left"}
+TO_PRODUCT, TO_CUSTOMER = [edge("product")], [edge("customer")]'''
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# 17 compare
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+write("17_compare", "17_compare.ipynb", [
+    intro("17 · Compare — the fifteen bar and column forms, and which question each one answers",
+          "Most charts anyone builds are a bar chart. Langsat offers fifteen shapes of one, and they are not "
+          "interchangeable: a stacked column answers \"how big is the whole, and what is it made of\", a clustered "
+          "column answers \"which of these is biggest\", and a 100% stacked column answers \"what is the MIX\" while "
+          "deliberately throwing away the size. Picking the wrong one draws a chart that is readable and answers a "
+          "question nobody asked.",
+          ["`column` and `bar` — the same trace, one with `orientation: \"h\"`, and when horizontal wins",
+           "Stacked, clustered and 100% stacked, in both orientations — six charts, one `series` well",
+           "`top_n` on an axis with 6,469 values, and the three charts where the parameter does not exist",
+           "`dot` — a bar chart with the bars removed, for when the baseline is not zero",
+           "`histogram(edges=…)` — you give the boundaries, the server mints the labels",
+           "`facet` — small multiples, one panel per value",
+           "Draw the whole tab as one image with `viz.draw_tab`"],
+          "nothing. Fifteen charts, one table scan each, no model."),
+    code(ANALYTICS_PREAMBLE),
+    code(ANALYTICS_SETUP + '\ntab = fresh_tab(p, "17 · Compare")\n' + ANALYTICS_STAR),
+    md("""## 1 · One measure, one category
+
+`column` and `bar` are the **same Plotly trace**. The only difference is `orientation: "h"`, and it is not
+decoration: a horizontal bar gives each label a whole line to itself, so it is the honest choice the moment your
+categories have names rather than numbers. Compare `rating` (five short labels, vertical is fine) with
+`category` (long strings, vertical would overlap or rotate)."""),
+    code('''by_rating = tab.preview_chart(charts.column(axis="review.rating", value=charts.count(), tables=["review"]))
+tab.add_chart(by_rating["recipe"], title="Reviews by rating")
+
+by_category = tab.preview_chart(charts.bar(axis="product.category", value=charts.count(),
+                                           tables=["review", "product"], joins=TO_PRODUCT, top_n=10))
+tab.add_chart(by_category["recipe"], title="Top 10 categories")
+print("ratings :", dict(zip(by_rating["spec"]["data"][0]["x"], by_rating["spec"]["data"][0]["y"])))
+print("axis of a bar is y:", by_category["spec"]["data"][0]["y"][:3])'''),
+    md("""Two things in that second axis are the data, not the chart: `&amp;` is an un-decoded HTML entity and
+`\\N` is the placeholder this export uses for a missing category. `amazon-reviews-explore` accepted the cleaning
+plan as generated; [chapter 14](../14_cleaning_plan/) is where those two are found and fixed, on a project that
+stops before the clean to do it. A chart draws what is there — which is the argument for reading the cleaning plan
+before you build twenty cards on top of it."""),
+    md("""## 2 · Add a legend and you have six more charts
+
+Drop a second field into `series` and the same `bar` trace becomes stacked or clustered depending on one layout
+key. All six **require** the legend — the constructor refuses without it, because a stacked chart of one series is
+just a column chart drawn more slowly.
+
+The three questions, in the order you should ask them:
+
+| you want to know | use | what it throws away |
+|---|---|---|
+| how big is each whole, and what is inside it | `stacked_column` | the parts are hard to compare across columns |
+| which single part is biggest | `grouped_column` | the total |
+| what the **mix** is, regardless of size | `stacked_column_100` | the size, on purpose |"""),
+    code('''for cid, title in [("stacked_column", "Verified vs not, stacked"),
+                   ("grouped_column", "Verified vs not, side by side"),
+                   ("stacked_column_100", "Verified share of each rating")]:
+    r = getattr(charts, cid)(axis="review.rating", series="review.verified",
+                             value=charts.count(), tables=["review"])
+    pv = tab.preview_chart(r)
+    tab.add_chart(pv["recipe"], title=title)
+    print(f"{cid:<20} barmode={r.get('render_layout', {}).get('barmode'):<6} "
+          f"barnorm={r.get('render_layout', {}).get('barnorm')} · {len(pv['spec']['data'])} traces")'''),
+    md("""The 100% variant is the one to be careful with. Plotly normalises the bars **at draw time** and the data
+underneath stays raw — so the axis reads 0–100 while the numbers behind the chart are still counts. That matters
+in [chapter 20](../20_readable/), where turning data labels on writes the raw value beside a percentage axis."""),
+    code('''pv = tab.preview_chart(charts.stacked_column_100(axis="review.rating", series="review.verified",
+                                                 value=charts.count(), tables=["review"]))
+for t in pv["spec"]["data"]:
+    print(f"  series {t['name']!r:<8} y = {t['y']}")
+print("\\nbarnorm:", pv["spec"]["layout"].get("barnorm"), "— the axis is a percentage, the data is not")'''),
+    md("""The legend reads `'0'` and `'1'` because that is what `verified` is in the cleaned table — the cleaner
+stored the boolean as an integer, and a recipe chart labels a series with the value it grouped by. Renaming it is
+`format(series_colors=…)`'s neighbour `series_labels`, and it is in [chapter 20](../20_readable/)."""),
+    md("""## 3 · `top_n`, and the three charts that do not have it
+
+A categorical axis always carries a limit, because a group-by over 6,469 brands returns 6,469 rows to draw in a
+few hundred pixels. `top_n` sets it; `top_n_dir` picks which end.
+
+But the parameter only exists where the engine can honour it, and that is a property of the chart type rather
+than a choice you make:
+
+- a chart that **requires a legend** cannot rank its axis — the ranking would differ per series, so the six
+  stacked and clustered forms and the stacked area have no `top_n` at all;
+- a **lines** trace is ordered by its x-axis, so "the top 10 by measure" would draw a line hopping between
+  non-adjacent points — `line`, `line_markers` and `area` have none either.
+
+Until 0.4.1 they all accepted the argument and emitted nothing. Now it is a `TypeError`, which is the difference
+between a mistake you find in a second and a chart you trust for a month."""),
+    code('''import inspect
+for cid in ("column", "bar", "dot", "histogram", "stacked_column", "line", "area"):
+    ps = inspect.signature(getattr(charts, cid)).parameters
+    print(f"  charts.{cid:<20} top_n {'yes' if 'top_n' in ps else 'no '}")
+
+try:
+    charts.stacked_column(axis="review.rating", series="review.verified",
+                          value=charts.count(), tables=["review"], top_n=10)
+except TypeError as e:
+    print("\\n ", e)'''),
+    code('''wide = charts.column(axis="product.brand", value=charts.count(),
+                     tables=["review", "product"], joins=TO_PRODUCT, top_n=10)
+pv = tab.preview_chart(wide)
+tab.add_chart(pv["recipe"], title="Top 10 brands by review count")
+print(f"brands in the data: {pv['n_groups']:,} · drawn: {len(pv['spec']['data'][0]['x'])}")
+print("order_by:", wide["order_by"])
+
+rare = tab.preview_chart(charts.column(axis="product.brand", value=charts.count(),
+                                       tables=["review", "product"], joins=TO_PRODUCT,
+                                       top_n=10, top_n_dir="asc"))
+print("\\nthe other end (top_n_dir='asc'):", list(zip(rare["spec"]["data"][0]["x"][:3],
+                                                     rare["spec"]["data"][0]["y"][:3])))'''),
+    md("""## 4 · `dot` — a bar chart with the bars removed
+
+When every value sits in a narrow band, bars waste the whole chart drawing the part that is identical. A dot plot
+is the same recipe with `mode: "markers"`: it reads the difference rather than the magnitude. Use it when the
+baseline is not zero — mean rating per category lives between 3.5 and 5, and bars from zero say nothing."""),
+    md("""One trap first. `top_n` ranks by **the chart's own measure**, so a dot plot of *mean rating* with
+`top_n=12` returns the twelve categories with the highest mean — which are twelve categories holding one
+five-star review each, drawn as a flat line at 5.0. Measured, not hypothetical: that is what the first draft of
+this cell produced.
+
+What you meant is "the categories that matter, rated" — two questions, so two steps. Rank by volume, then chart
+the rating over exactly those, with `is_in`."""),
+    code('''top_cats = list(by_category["spec"]["data"][0]["y"])          # a horizontal bar's axis is y
+flat = tab.preview_chart(charts.dot(axis="product.category", value=charts.avg("review.rating"),
+                                    tables=["review", "product"], joins=TO_PRODUCT, top_n=12))
+print("ranked by mean rating :", round(min(flat["spec"]["data"][0]["y"]), 2),
+      "→", round(max(flat["spec"]["data"][0]["y"]), 2), "— every one of them is a single 5-star review")
+
+pv = tab.preview_chart(charts.dot(axis="product.category", value=charts.avg("review.rating"),
+                                  tables=["review", "product"], joins=TO_PRODUCT,
+                                  filters=[charts.is_in("product.category", top_cats)], top_n=12))
+tab.add_chart(pv["recipe"], title="Mean rating of the 10 biggest categories")
+print("over the biggest 10    :", round(min(pv["spec"]["data"][0]["y"]), 2),
+      "→", round(max(pv["spec"]["data"][0]["y"]), 2))
+print("trace:", pv["spec"]["data"][0]["type"], "· mode:", pv["spec"]["data"][0]["mode"])'''),
+    md("""## 5 · `histogram` — you give the edges, never the labels
+
+A histogram is a `bar` whose axis is **numeric and bucketed**. You pass the boundaries; N edges make N−1 buckets,
+each `[low, high)`. You never pass labels, and the reason is not style: a bucket label is interpolated into SQL
+text, so the server mints them."""),
+    code('''h = charts.histogram(axis="product.price", edges=[0, 5, 10, 15, 20, 30, 50, 100], tables=["product"])
+print("what you sent:"); show_recipe(h)
+pv = tab.preview_chart(h)
+tab.add_chart(pv["recipe"], title="Price distribution")
+print("\\nthe labels the server minted:", pv["spec"]["data"][0]["x"])
+print("counts:", pv["spec"]["data"][0]["y"])'''),
+    md("""## 6 · `facet` — one panel per value
+
+Small multiples: the same chart repeated once per value of another field, on shared axes so the panels are
+comparable. It is a well like any other, and like a legend it takes the Top N away."""),
+    code('''pv = tab.preview_chart(charts.column(axis="review.rating", value=charts.count(),
+                                     tables=["review"], facet="review.verified"))
+tab.add_chart(pv["recipe"], title="Ratings, split by verified purchase")
+print("panels:", len(pv["spec"]["data"]), "· small_multiples_enabled:", cap["small_multiples_enabled"])'''),
+    md("""## 7 · The tab, as one image
+
+`viz.draw_tab` refreshes the tab and draws every widget on it with matplotlib — no browser, no model, and it is
+how these notebooks show a dashboard on GitHub. The server re-aggregates each card as it is drawn, so this is the
+data as it stands right now, not a snapshot."""),
+    code('''fig(viz.draw_tab(tab, cols=3))'''),
+    code('''charged = credits_used(ls) - before
+print(f"{len(tab.refresh().charts)} charts · credits charged: {charged}")
+save_metrics(".", {"notebook": "17_compare", "task": "the bar family · 15 forms of one trace",
+                   "model": "—", "project_id": p.id, "credits_charged_this_run": charged,
+                   "headline": {"charts_built": len(tab.charts), "brands_in_data": wide and pv and by_category["n_groups"],
+                                "price_buckets": len(h["bins"]["edges"]) - 1}})'''),
+    next_steps("[18 · Trend](../18_trend/) — the same grammar with time on the axis",
+               "[20 · Make it readable](../20_readable/) — number formats, data labels, colours, rules",
+               "[16 · The grammar](../16_chart_grammar/) — why `chart_type` is a trace type"),
+])
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# 18 trend
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+write("18_trend", "18_trend.ipynb", [
+    intro("18 · Trend — time on the axis, the five grains, and the filter that freezes",
+          "A date column is the one field the SDK cannot recognise on its own: it has no schema, so "
+          "`charts.column(axis=\"review.review_time\")` is a chart of 2,772 categories, capped at 50, in "
+          "descending order of count. `charts.date(column, grain)` is how you say what it is — and the four "
+          "line and area shapes are what you draw once you have.",
+          ["The four time shapes: `line`, `line_markers`, `area`, `stacked_area`",
+           "All five grains — year, quarter, month, week, date — and what each one costs in points",
+           "Why `top_n` does not exist on a lines trace, and what happens if you rank a line by measure",
+           "`date_between` **freezes**; `last_n_days` is resolved at query time — and on 2018 data returns nothing",
+           "A date in the LEGEND, which is the same trap one well over",
+           "Reading the series back as a pandas frame with `chart.data`"],
+          "nothing."),
+    code(ANALYTICS_PREAMBLE),
+    code(ANALYTICS_SETUP + '\ntab = fresh_tab(p, "18 · Trend")\n' + ANALYTICS_STAR),
+    code('''print("the time column detection accepted:", cap["joins"]["time_cols"])
+print("grains the engine offers    :", cap["grains"])
+print("what `charts.date` accepts  :", "year, quarter, month, week, date — plus the aliases monthly, daily, …")'''),
+    md("""## 1 · The four shapes
+
+All four are a `scatter` trace. `line` is `mode: "lines"`; `line_markers` adds the points, which is the honest
+choice when there are few enough of them to be individually meaningful; `area` adds `fill: "tozeroy"` and says
+"this is a quantity accumulating from zero"; `stacked_area` adds `stackgroup` and needs a legend, because its whole
+job is to show composition over time."""),
+    code('''YEAR = charts.date("review.review_time", "year")
+for cid, title, extra in [("line", "Reviews per year", {}),
+                          ("line_markers", "Mean rating per year", {"value": charts.avg("review.rating")}),
+                          ("area", "Reviews per year, as a quantity", {}),
+                          ("stacked_area", "Verified vs not, over time", {"series": "review.verified"})]:
+    kw = {"axis": YEAR, "value": charts.count(), "tables": ["review"], **extra}
+    r = getattr(charts, cid)(**kw)
+    pv = tab.preview_chart(r)
+    tab.add_chart(pv["recipe"], title=title)
+    d0 = pv["spec"]["data"][0]
+    print(f"{cid:<14} {d0['type']}/{d0.get('mode','')}{' fill=' + d0['fill'] if d0.get('fill') else ''}"
+          f"{' stackgroup=' + str(d0.get('stackgroup')) if d0.get('stackgroup') else ''}"
+          f" · {len(pv['spec']['data'])} trace(s) · {pv['n_groups']} points")'''),
+    md("""## 2 · The five grains
+
+A grain is a SQL truncation, so the choice is a choice about how many rows come back and what each point means.
+`to_date` on this data is 2,772 points — every distinct day between 2008 and 2018 — which is more than a chart can
+show and more than a reader can use."""),
+    code('''import pandas as pd
+rows = []
+for g in ("year", "quarter", "month", "week", "date"):
+    pv = tab.preview_chart(charts.line(axis=charts.date("review.review_time", g),
+                                       value=charts.count(), tables=["review"]))
+    rows.append({"grain": g, "transform": charts.date("review.review_time", g)["transform"],
+                 "points": pv["n_groups"], "first": pv["spec"]["data"][0]["x"][0],
+                 "last": pv["spec"]["data"][0]["x"][-1]})
+pd.DataFrame(rows).set_index("grain")'''),
+    code('''pv = tab.preview_chart(charts.line(axis=charts.date("review.review_time", "month"),
+                                   value=charts.count(), tables=["review"]))
+tab.add_chart(pv["recipe"], title="Reviews per month")
+s = pd.Series(pv["spec"]["data"][0]["y"], index=pd.to_datetime(pv["spec"]["data"][0]["x"]))
+print(f"{len(s)} months · peak {s.max()} in {s.idxmax():%Y-%m} · the last six:")
+print(s.tail(6).to_string())'''),
+    md("""That tail is worth seeing: the sample thins out sharply in its final months (it was drawn from a snapshot,
+so the most recent reviews are simply the ones that existed when it was taken). Any forecast of this series has to
+follow that down — which is what [chapter 07](../07_forecast_review_volume/) does, and why its median hugs zero."""),
+    md("""## 3 · A time axis has no Top N — on any chart
+
+`top_n_available`, the SDK's port of the app's own rule, says no in two situations, and this chapter is both of
+them. The first is a **lines trace**: ranking a line by measure would join 2013-07 to 2016-11 to 2014-02 and draw
+a time series that never happened, so `charts.line`, `line_markers` and `area` have no `top_n` parameter at all —
+passing one is a `TypeError`.
+
+The second is a **date axis on any chart**, and this one is a choice you make rather than a property of the chart
+type, so the parameter still exists. `charts.column` keeps `top_n` because a categorical axis can be ranked — make
+that axis a date with `charts.date` and the ranking goes away, exactly as the app's own Top N control disappears
+when you drop a date into the X well. The recipe comes back with no `order_by` and the chart draws every period.
+
+Which is right — a chart of months should be in month order — but it is worth knowing, because the argument is
+accepted and does nothing."""),
+    code('''try:
+    charts.line(axis=YEAR, value=charts.count(), tables=["review"], top_n=10)
+except TypeError as e:
+    print("charts.line  ·", e)
+
+for label, r in [("date axis", charts.column(axis=charts.date("review.review_time", "month"),
+                                             value=charts.count(), tables=["review"], top_n=10)),
+                 ("text axis", charts.column(axis="product.brand", value=charts.count(),
+                                             tables=["review", "product"], joins=TO_PRODUCT, top_n=10))]:
+    q = tab.preview_chart(r)
+    print(f"charts.column · {label} · top_n=10 → order_by={r.get('order_by')} "
+          f"· drew {len(q['spec']['data'][0]['x'])} of {q['n_groups']}")'''),
+    md("""## 4 · `date_between` freezes. `last_n_days` does not.
+
+`date_between(col, start, end)` stores two literal dates. It is right on the day you write it and wrong every day
+after — on a saved view, on a share link, and on every scheduled refresh. `last_n_days(col, n)` stores the
+**intent** and the database resolves the window when the query runs.
+
+On this dataset that difference is visible immediately, because the data ends on 2018-09-11: a 90-day window from
+today contains nothing at all. An empty chart is the correct answer to the question asked, and it is the argument
+for `date_between` on a frozen historical extract and `last_n_days` on anything live."""),
+    code('''live = charts.line(axis=charts.date("review.review_time", "month"), value=charts.count(),
+                   tables=["review"], filters=[charts.last_n_days("review.review_time", 90)])
+frozen = charts.line(axis=charts.date("review.review_time", "month"), value=charts.count(),
+                     tables=["review"], filters=[charts.date_between("review.review_time", "2017-01-01", "2018-09-30")])
+print("last_n_days(90)   filter:", live["base_filters"])
+print("date_between(…)   filter:", frozen["base_filters"])
+a, b = tab.preview_chart(live), tab.preview_chart(frozen)
+print(f"\\nlast_n_days(90)   → {a['n_groups']} points  (the data ends 2018-09-11)")
+print(f"date_between(…)   → {b['n_groups']} points")
+_ = tab.add_chart(b["recipe"], title="Reviews per month, 2017 to Sept 2018")'''),
+    md("""## 5 · A date in the legend is the same trap, one well over
+
+`series` is a grouping too, so a raw date there is one legend entry per instant. The engine does not simply
+truncate: it keeps the top 20 and rolls the rest into a single **Other** bucket, in SQL, and reports exactly what it
+did on `series_rollup`. So the chart is arithmetically honest and completely useless — 2,752 dates collapsed into
+one slice called Other. `charts.date` works in either well, and this is the well where forgetting it is hardest to
+notice."""),
+    code('''raw = charts.stacked_column(axis="review.rating", series="review.review_time",
+                            value=charts.count(), tables=["review"])
+grained = charts.stacked_column(axis="review.rating", series=charts.date("review.review_time", "year"),
+                                value=charts.count(), tables=["review"])
+ra, rb = tab.preview_chart(raw), tab.preview_chart(grained)
+print(f"a raw date in `series` → {len(ra['spec']['data'])} legend entries, and the preview says what happened:")
+print("  series_rollup:", ra["series_rollup"])
+print("  the last one is:", ra["spec"]["data"][-1]["name"])
+print(f"\\ncharts.date(…, 'year')  → {len(rb['spec']['data'])} legend series, no rollup: {[t['name'] for t in rb['spec']['data']]}")
+_ = tab.add_chart(rb["recipe"], title="Ratings by year, stacked")'''),
+    md("""## 6 · The numbers behind a card
+
+`chart.data()` is the same aggregate the card draws, as rows — free, and on `dashboards:read`. `op="aggregate"`
+re-runs the recipe (optionally under a filter, which is a drill without an LLM); `op="page"` and `op="export"`
+return the long-format rows as dicts."""),
+    code('''card = tab.chart("Reviews per month")
+agg = card.data(op="aggregate")
+print("keys:", sorted(agg)[:8])
+page = card.data(op="page", page_size=5)
+print("\\ncolumns:", page["columns"], "· total rows:", page.get("total_matched"))
+pd.DataFrame(page["rows"])'''),
+    code('''fig(viz.draw_tab(tab, cols=3))'''),
+    code('''charged = credits_used(ls) - before
+print(f"{len(tab.refresh().charts)} charts · credits charged: {charged}")
+save_metrics(".", {"notebook": "18_trend", "task": "time on the axis · 4 shapes, 5 grains, the filter that freezes",
+                   "model": "—", "project_id": p.id, "credits_charged_this_run": charged,
+                   "headline": {"charts_built": len(tab.charts), "months": len(s),
+                                "days_in_data": rows[-1]["points"], "peak_month": f"{s.idxmax():%Y-%m}",
+                                "last_n_days_90_points": a["n_groups"]}})'''),
+    next_steps("[19 · Part of a whole](../19_composition/) — pie, donut, funnel, treemap, heatmap, matrix, KPI, combo",
+               "[07 · Forecast](../07_forecast_review_volume/) — the same series, forecast without training",
+               "[21 · Measures and filters](../21_measures_and_filters/) — the filter set in full"),
+])
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# 19 part of a whole, and the grid
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+write("19_composition", "19_composition.ipynb", [
+    intro("19 · Part of a whole, and the grid — pie, donut, funnel area, funnel, treemap, heatmap, matrix, KPI, combo",
+          "The nine chart types that are not a bar and not a line. Each one answers a question the bar family "
+          "cannot, and each one has a rule that follows from what it means: a composition has no Top N because "
+          "truncating a whole is a lie about it, a funnel has an order because the order IS the funnel, a heatmap "
+          "has cell caps because a grid loses whole rows rather than a tail, and a KPI has no axis and therefore "
+          "no drill. With this chapter the book has covered all 24.",
+          ["`pie` · `donut` · `funnelarea` — one additive whole, and why none of them takes a Top N",
+           "`funnel` — the one composition that is ordered by its measure, with no limit",
+           "`treemap` — 426 leaves against a 200-leaf bound, and what the engine does about it",
+           "`heatmap` and `matrix` — two axes and a value; `series` is the y channel, not a legend",
+           "`kpi` — one number over the whole filtered table, and why `charts.kpi(charts.count())` alone refuses",
+           "`combo` — two measures, one axis, a real second y-axis, and why a legend is refused",
+           "The three surfaces this server has switched off, as code you can copy"],
+          "nothing."),
+    code(ANALYTICS_PREAMBLE),
+    code(ANALYTICS_SETUP + '\ntab = fresh_tab(p, "19 · Composition")\n' + ANALYTICS_STAR),
+    md("""## 1 · One additive whole
+
+`pie`, `donut` and `funnelarea` are three drawings of the same idea: these parts sum to something, and each part's
+share of it is the message. `donut` is a `pie` with `hole: 0.4` — the hole is not decoration, it removes the centre
+where a pie's angles are hardest to compare and leaves the arc lengths, which are easier.
+
+None of the three has a `top_n` parameter, and the reason is arithmetic rather than taste: keep 50 of 1,200 slices
+and every remaining slice's implied share is wrong, because the reader computes it against a whole that is no longer
+there. If you need to narrow a composition, **filter** — then the whole is the thing you filtered to, and the shares
+are true of it."""),
+    code('''import inspect
+for cid in ("pie", "donut", "funnelarea", "funnel", "treemap"):
+    ps = set(inspect.signature(getattr(charts, cid)).parameters)
+    print(f"  charts.{cid:<12} top_n {'yes' if 'top_n' in ps else 'no '}  "
+          f"top_n_dir {'yes' if 'top_n_dir' in ps else 'no '}  details {'yes' if 'details' in ps else 'no '}")'''),
+    code('''for cid, title in [("pie", "Share of reviews by rating"),
+                   ("donut", "Share of reviews by rating (donut)"),
+                   ("funnelarea", "Rating mix, as a funnel area")]:
+    pv = tab.preview_chart(getattr(charts, cid)(axis="review.rating", value=charts.count(), tables=["review"]))
+    _ = tab.add_chart(pv["recipe"], title=title)
+    d0 = pv["spec"]["data"][0]
+    print(f"{cid:<12} trace={d0['type']:<11}{' hole=' + str(d0['hole']) if d0.get('hole') else ''}"
+          f" · labels={d0.get('labels')} values={d0.get('values')}")'''),
+    md("""## 2 · `funnel` — the order *is* the chart
+
+A funnel is a composition whose stages are meant to descend. Plotly has no `sort` for it, so without an explicit
+order the engine falls through to `ORDER BY d0` — alphabetical — and 1,000 / 400 / 120 comes back 400 → 120 → 1,000:
+a funnel that narrows and then balloons, with every percent-of-first read off the wrong stage.
+
+So `charts.funnel` is the one composition that emits an `order_by` — a **direction with no limit**. `top_n_dir`
+exists here and nowhere else in the family, because here the direction means something."""),
+    code('''f = charts.funnel(axis="review.rating", value=charts.count(), tables=["review"])
+print("order_by:", f["order_by"], "· limit present?", "limit" in f["order_by"])
+pv = tab.preview_chart(f)
+_ = tab.add_chart(pv["recipe"], title="Ratings as a funnel")
+print("stages as drawn:", list(zip(pv["spec"]["data"][0]["y"], pv["spec"]["data"][0]["x"])))'''),
+    md("""## 3 · `treemap` — and a bound that is a correctness limit
+
+A treemap nests rectangles by area, so it reads a large number of categories far better than a pie can.
+`product.category` has 426 distinct values, and this is where a number in the grammar turns out to be advice rather
+than a rule: `limits.max_composition_leaves` is 200, and the engine drew all 426 anyway. So read it as the point past
+which a treemap stops being legible — which 426 rectangles in a dashboard card certainly is — and narrow it yourself
+with a filter. Do not read it as something that will stop you."""),
+    code('''t = charts.treemap(axis="product.category", value=charts.count(),
+                   tables=["review", "product"], joins=TO_PRODUCT)
+pv = tab.preview_chart(t)
+_ = tab.add_chart(pv["recipe"], title="Reviews by category, as a treemap")
+print("max_composition_leaves:", cap["limits"]["max_composition_leaves"],
+      "· n_groups:", pv["n_groups"], "· leaves actually drawn:", len(pv["spec"]["data"][0]["labels"]))
+print("biggest three:", sorted(zip(pv["spec"]["data"][0]["values"], pv["spec"]["data"][0]["labels"]), reverse=True)[:3])
+
+legible = tab.preview_chart(charts.treemap(axis="product.category", value=charts.count(),
+                                           tables=["review", "product"], joins=TO_PRODUCT,
+                                           filters=[charts.contains("product.category", "Mystery")]))
+_ = tab.add_chart(legible["recipe"], title="Mystery categories only")
+print("\\nnarrowed with a filter:", legible["n_groups"], "leaves — and every share is true of that whole")'''),
+    md("""## 4 · `heatmap` and `matrix` — two axes and a value
+
+These are the only two chart types where **both** fields are axes. The recipe grammar has no second-dimension slot,
+so the second one rides in as `role: "series"` and the engine resolves it to the **y channel** rather than to a
+legend — which is why `series` is a required positional argument here rather than an optional well.
+
+A `matrix` is the same aggregate drawn as a Plotly `table`: the numbers instead of the colours, which is what you
+want when the reader will quote them. Both are bounded by cells rather than by categories, because a grid that is
+too big loses whole rows rather than a tail."""),
+    code('''for cid, title in [("heatmap", "Ratings by year, as a heatmap"), ("matrix", "Ratings by year, as a table")]:
+    r = getattr(charts, cid)(axis=charts.date("review.review_time", "year"), series="review.rating",
+                             value=charts.count(), tables=["review"])
+    pv = tab.preview_chart(r)
+    _ = tab.add_chart(pv["recipe"], title=title)
+    d0 = pv["spec"]["data"][0]
+    print(f"{cid:<9} trace={d0['type']:<9} · role of the second field: "
+          f"{r['group_by'][1].get('role')} · keys={sorted(d0)[:4]}")
+print("\\nbounds: max_heatmap_series", cap["limits"]["max_heatmap_series"],
+      "· max_heatmap_cells", cap["limits"]["max_heatmap_cells"], "· this grid: 11 × 5 = 55 cells")'''),
+    md("""⚠ **And one asymmetry worth knowing before you build on it.** A card's figure is either written to
+object storage with a `data_ref` on the widget — which is what happens to almost everything, `dashcard_offload` —
+or kept inline on the widget as `plotly`. `chart.data()` serves the **offloaded** payload, so on an inline card it
+answers `400 widget has no offloaded data`. A `matrix` is small by construction and therefore always inline, so its
+numbers are read from the widget rather than from the endpoint. Both are free; they are just different doors."""),
+    code('''tab.refresh()
+by_id = {w.get("id") or w.get("widget_id"): w for w in tab.widgets}
+for c in tab.charts:
+    w = by_id.get(c.id, {})
+    print(f"  {c.title[:36]:<38} inline={bool(w.get('plotly'))}  data_ref={bool(w.get('data_ref'))}")
+
+from langsat.errors import Invalid
+try:
+    tab.chart("Ratings by year, as a table").data(op="aggregate")
+except Invalid as e:
+    print(f"\\n  chart.data() on the inline card → {e.status} {e.message}")'''),
+    code('''cells = by_id[tab.chart("Ratings by year, as a table").id]["plotly"]["data"][0]
+pd.DataFrame(dict(zip(cells["header"]["values"][1:], cells["cells"]["values"][1:])),
+             index=cells["cells"]["values"][0]).rename_axis("rating")'''),
+    md("""## 5 · `kpi` — one number, no axis, no drill
+
+A KPI is `dimensionless`: it groups by nothing, so the aggregate is defined over the whole filtered table. That is
+also why it cannot be drilled — a click would have no category to filter by — and why it emits no `order_by`.
+
+`charts.kpi(charts.count())` on its own is refused locally, and the refusal is worth reading: a count of rows with
+no column names no table, so there is nothing to count. Pass `tables=`."""),
+    code('''from langsat._charts_core import RecipeError
+try:
+    charts.kpi(charts.count())
+except RecipeError as e:
+    print(e)
+
+for label, measure in [("Mean rating", charts.avg("review.rating")),
+                       ("Reviews", charts.count()),
+                       ("Distinct products reviewed", charts.count_distinct("review.product_id"))]:
+    pv = tab.preview_chart(charts.kpi(measure, tables=["review"]))
+    _ = tab.add_chart(pv["recipe"], title=label)
+    d0 = pv["spec"]["data"][0]
+    print(f"  {label:<28} {d0['type']}/{d0['mode']} = {d0['value']:,} · n_groups={pv['n_groups']}")'''),
+    md("""## 6 · `combo` — two measures on one axis
+
+The one chart type built from an **attach** recipe: a shared key and one *pod* per measure, each pod a small recipe
+of its own. `dual_axis=True` gives the second measure its own right-hand axis — and the SDK writes both halves of
+that, because `yaxis: "y2"` on the pod with no `yaxis2` in the layout draws the second series on an axis Plotly
+never creates.
+
+A legend is refused, and not arbitrarily: each pod picks its own keep-set, so two measures split by a legend would
+be ranked independently and the two halves of the chart would describe different rows."""),
+    code('''c = charts.combo(axis=charts.date("review.review_time", "year"),
+                 value=charts.count(), value2=charts.avg("review.rating"),
+                 dual_axis=True, tables=["review"])
+print("pods:")
+for pod in c["attach"]["pods"]:
+    print(f"  {pod['name']:<20} {pod['chart_type']}{'/' + pod['mode'] if pod.get('mode') else ''}"
+          f" · tables={pod['tables']} · yaxis={pod.get('yaxis', 'y')}")
+print("layout the dual axis needs:", c["render_layout"])
+pv = tab.preview_chart(c)
+_ = tab.add_chart(pv["recipe"], title="Reviews per year vs mean rating")
+print("\\ntraces drawn:", [(t["type"], t.get("mode"), t.get("yaxis", "y")) for t in pv["spec"]["data"]])'''),
+    code('''try:
+    charts.combo(axis="review.rating", series="review.verified", value=charts.count(),
+                 value2=charts.avg("review.rating"), tables=["review"])
+except RecipeError as e:
+    print(e)'''),
+    md("""A combo across a **join** works the same way, and the pods carry the star rather than the outer recipe — a
+detail that only matters when it is wrong, which it was until 0.4.3."""),
+    code('''joined = charts.combo(axis="product.category", value=charts.count(),
+                      value2=charts.avg("review.rating"), dual_axis=True,
+                      tables=["review", "product"], joins=TO_PRODUCT)
+print("top-level joins:", "joins" in joined, "· top-level tables:", joined["tables"])
+print("pod tables     :", [pod["tables"] for pod in joined["attach"]["pods"]])
+pv = tab.preview_chart(joined)
+print("n_groups:", pv["n_groups"], "· traces:", [t["type"] for t in pv["spec"]["data"]])'''),
+    md("""## 7 · The three surfaces this server has off
+
+Three wells are behind feature flags, and on langsat.ai today all three are off. The code below is what you would
+write; `builder_capabilities()` is how you find out whether it will run, which is why these notebooks read it rather
+than assume.
+
+- **`recipe_xy_scatter`** — `charts.scatter`: a measure on *each* axis, one point per value of `details`. This is the
+  only one of the 24 chart types that cannot run here.
+- **`recipe_tooltips`** — the `tooltips=` well: up to three extra aggregates that appear on hover only.
+- **`recipe_composition_detail`** — the `details=` well on `pie`, `donut` and `treemap`: a second level inside each
+  slice."""),
+    code('''print({k: v for k, v in cap.items() if k in ("xy_scatter_enabled", "tooltips_enabled", "composition_detail_enabled")})
+
+from langsat.errors import Refused
+xy = charts.scatter(details="product.product_id",
+                    x=charts.avg("review.rating"), y=charts.count(),
+                    size=charts.count_distinct("review.customer_id") if False else None,
+                    tables=["review", "product"], joins=TO_PRODUCT, top_n=200)
+try:
+    tab.preview_chart(xy)
+except Refused as e:
+    print("\\ncharts.scatter →", str(e).replace("[200 refused] ", ""))
+
+print("\\nthe recipe it would have sent:")
+show_recipe(xy)'''),
+    code('''fig(viz.draw_tab(tab, cols=3))'''),
+    code('''charged = credits_used(ls) - before
+built = len(tab.refresh().charts)
+print(f"{built} charts · credits charged: {charged}")
+print("\\nwith chapters 17 and 18, the book has now drawn every chart type this server allows:")
+print(" ", ", ".join(sorted(set(charts.BY_ID) - {"scatter"})))
+save_metrics(".", {"notebook": "19_composition", "task": "compositions, grids, KPI and combo · the last 9 of the 24 types",
+                   "model": "—", "project_id": p.id, "credits_charged_this_run": charged,
+                   "headline": {"charts_built": built, "treemap_leaves": pv and t and None or None,
+                                "types_available_here": len(charts.BY_ID) - 1,
+                                "xy_scatter_enabled": cap["xy_scatter_enabled"]}})'''),
+    next_steps("[20 · Make it readable](../20_readable/) — number formats, data labels, colours, rules, reference lines",
+               "[21 · Measures and filters](../21_measures_and_filters/) — the semantic layer, and filtering a board",
+               "[16 · The grammar](../16_chart_grammar/) — the 24 types, read from the server"),
+])
